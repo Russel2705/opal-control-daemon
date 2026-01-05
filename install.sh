@@ -1,18 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ===== Path: otomatis ambil folder repo saat script dijalankan =====
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
-
 ENV_FILE="/etc/opal-daemon.env"
-DB_DIR="/var/lib/opal-daemon"
-PASS_MGR="/usr/local/bin/zivpn-passwd-manager"
 SERVICE_FILE="/etc/systemd/system/opal-daemon.service"
 
 echo "==> App dir: $APP_DIR"
 
 apt update -y
-apt install -y curl git jq ca-certificates build-essential python3 make g++
+apt install -y curl git jq ca-certificates build-essential
 
 # Node 20
 if ! command -v node >/dev/null 2>&1; then
@@ -20,31 +16,37 @@ if ! command -v node >/dev/null 2>&1; then
   apt install -y nodejs
 fi
 
-mkdir -p "$DB_DIR"
-chmod 755 "$DB_DIR"
+# Install udp-zivpn if missing
+if ! systemctl list-unit-files | grep -q '^zivpn\.service'; then
+  echo "==> Installing udp-zivpn..."
+  bash <(curl -fsSL https://raw.githubusercontent.com/zahidbd2/udp-zivpn/main/zi2.sh)
+fi
 
-# ===== Buat env jika belum ada =====
+# Install zivpn password manager
+install -m 0755 "$APP_DIR/scripts/zivpn-passwd-manager.sh" /usr/local/bin/zivpn-passwd-manager
+
+# Create env on first install
 if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Pilih mode:"
-  echo "1) PAID (TopUp Pakasir + QRIS + webhook)"
-  echo "2) FREE (tanpa payment)"
-  read -rp "Pilih (1/2) [1]: " opt
-  opt="${opt:-1}"
-  MODE="paid"
-  [[ "$opt" == "2" ]] && MODE="free"
+  echo "==> Membuat $ENV_FILE"
+  read -rp "MODE (free/paid) [paid]: " MODE
+  MODE="${MODE:-paid}"
 
   read -s -p "BOT_TOKEN: " BOT_TOKEN; echo
-  read -rp "OWNER_ID (telegram id angka): " OWNER_ID
-  read -rp "ADMIN_IDS (pisah koma, boleh sama dengan owner): " ADMIN_IDS
+  read -rp "OWNER_ID (angka): " OWNER_ID
+  read -rp "ADMIN_IDS (pisah koma, boleh kosong): " ADMIN_IDS
 
-  PAKASIR_SLUG=""
+  read -rp "FREE_ACCESS (public/private) [public]: " FREE_ACCESS
+  FREE_ACCESS="${FREE_ACCESS:-public}"
+
+  PAKASIR_PROJECT=""
   PAKASIR_API_KEY=""
   WEBHOOK_TOKEN=""
 
   if [[ "$MODE" == "paid" ]]; then
-    read -rp "PAKASIR_SLUG: " PAKASIR_SLUG
+    echo "Pakasir docs: webhook payload + API transactioncreate/qris + transactiondetail ada di docs resmi. :contentReference[oaicite:4]{index=4}"
+    read -rp "PAKASIR_PROJECT (slug): " PAKASIR_PROJECT
     read -s -p "PAKASIR_API_KEY: " PAKASIR_API_KEY; echo
-    read -rp "WEBHOOK_TOKEN (random, contoh: abcd1234): " WEBHOOK_TOKEN
+    read -rp "WEBHOOK_TOKEN (random): " WEBHOOK_TOKEN
   fi
 
   cat > "$ENV_FILE" <<EOF
@@ -53,59 +55,36 @@ BOT_TOKEN=$BOT_TOKEN
 OWNER_ID=$OWNER_ID
 ADMIN_IDS=$ADMIN_IDS
 
-DB_PATH=$DB_DIR/app.db
+DB_DIR=/var/lib/opal-daemon
 
-PAKASIR_SLUG=$PAKASIR_SLUG
+PAKASIR_PROJECT=$PAKASIR_PROJECT
 PAKASIR_API_KEY=$PAKASIR_API_KEY
 WEBHOOK_PATH=/pakasir/webhook
 PORT=9000
 WEBHOOK_TOKEN=$WEBHOOK_TOKEN
+TOPUP_MIN=10000
 
-TRIAL_ENABLED=true
-TRIAL_DAYS=1
-TRIAL_ONCE_PER_USER=true
-TRIAL_MAX_DAILY=50
-TRIAL_PASSWORD_MODE=auto
-TRIAL_PREFIX=TR
+FREE_ACCESS=$FREE_ACCESS
 
-TZ=Asia/Jakarta
+ZIVPN_PASS_MGR=/usr/local/bin/zivpn-passwd-manager
 NODE_ENV=production
+NODE_OPTIONS=--dns-result-order=ipv4first
 EOF
 
   chmod 600 "$ENV_FILE"
-  echo "✅ Env dibuat: $ENV_FILE"
 else
-  echo "✅ Env sudah ada: $ENV_FILE"
+  echo "==> ENV sudah ada: $ENV_FILE"
 fi
 
-# ===== Pastikan udp-zivpn ada =====
-if ! systemctl list-unit-files | grep -q '^zivpn\.service'; then
-  echo "==> Installing udp-zivpn (zahid repo)..."
-  bash <(curl -fsSL https://raw.githubusercontent.com/zahidbd2/udp-zivpn/main/zi2.sh)
-fi
+# Prepare data dir
+mkdir -p /var/lib/opal-daemon
+chmod 755 /var/lib/opal-daemon
 
-# ===== Validasi config zivpn =====
-if [[ ! -f /etc/zivpn/config.json ]]; then
-  echo "ERROR: /etc/zivpn/config.json not found"
-  exit 1
-fi
-if ! jq -e '.auth.config and (.auth.config|type=="array")' /etc/zivpn/config.json >/dev/null 2>&1; then
-  echo "ERROR: /etc/zivpn/config.json tidak punya auth.config array"
-  exit 1
-fi
-
-# ===== Install password manager =====
-if [[ ! -f "$APP_DIR/scripts/zivpn-passwd-manager.sh" ]]; then
-  echo "ERROR: scripts/zivpn-passwd-manager.sh tidak ditemukan di repo"
-  exit 1
-fi
-install -m 0755 "$APP_DIR/scripts/zivpn-passwd-manager.sh" "$PASS_MGR"
-
-# ===== Install deps Node =====
+# Install deps
 cd "$APP_DIR"
 npm install --omit=dev
 
-# ===== Install systemd service (pakai path APP_DIR sebenarnya) =====
+# systemd
 cat > "$SERVICE_FILE" <<EOF
 [Unit]
 Description=Opal ZiVPN Bot (Node.js)
@@ -128,6 +107,6 @@ EOF
 systemctl daemon-reload
 systemctl enable --now opal-daemon
 
-echo "✅ Done."
+echo "✅ Installed."
 echo "Cek status: systemctl status opal-daemon"
-echo "Lihat log : journalctl -u opal-daemon -f"
+echo "Log realtime: journalctl -u opal-daemon -f"
