@@ -1,20 +1,17 @@
-# Opal ZiVPN Bot
+# Opal ZiVPN Bot (Auto 24 Jam)
 
-Fitur:
+Bot Telegram untuk jual/buat akun ZiVPN otomatis:
 - Pilih server (IP limit 1/2) + status penuh/tersedia
-- Create akun ZiVPN (Domain/Password/Expired)
-- PAID: TopUp Pakasir -> QRIS barcode langsung muncul di bot
-- Webhook: saldo masuk otomatis
-- systemd: bot on 24 jam
+- Create akun: Domain / Password / Expired
+- MODE=PAID: TopUp Pakasir -> QRIS barcode langsung muncul di bot
+- Webhook Pakasir -> saldo masuk otomatis
+- Systemd -> bot on 24 jam (auto restart)
 
-Install (1x):
-1) Clone repo ke VPS:
-   /opt/opal-zivpn-bot
-2) Jalankan:
-   sudo bash /opt/opal-zivpn-bot/install.sh
+---
 
-Update:
-sudo bash /opt/opal-zivpn-bot/update.sh
+## ✅ 1x Klik Install (1 Perintah)
 
-Log:
-journalctl -u opal-daemon -f
+Login VPS sebagai root lalu jalankan **satu baris** ini:
+
+```bash
+bash -c 'set -e; apt update -y; apt install -y git; rm -rf /opt/opal-zivpn-bot; git clone https://github.com/USERNAME/REPO.git /opt/opal-zivpn-bot; bash /opt/opal-zivpn-bot/install.sh'
