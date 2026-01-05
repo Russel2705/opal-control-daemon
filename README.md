@@ -1,20 +1,20 @@
-# Opal Control Daemon (FREE/PAID)
+# Opal ZiVPN Bot
 
 Fitur:
-- Bot Telegram provisioning akun ZiVPN (Domain/Password/Expired)
-- Integrasi core udp-zivpn (zahidbd2)
-- FREE: public/private + allowlist
-- PAID: saldo + TopUp Pakasir + webhook + SSL
-- PAID: Trial Akun (limit)
-- Admin Panel: create/extend/delete akun, ban/unban, delete user, stats
-- ON 24 jam via systemd (opal-daemon)
+- Pilih server (IP limit 1/2) + status penuh/tersedia
+- Create akun ZiVPN (Domain/Password/Expired)
+- PAID: TopUp Pakasir -> QRIS barcode langsung muncul di bot
+- Webhook: saldo masuk otomatis
+- systemd: bot on 24 jam
 
-Install:
-sudo bash -c 'set -e; apt update -y; apt install -y git; rm -rf /opt/opal-control-daemon; git clone https://github.com/Russel2705/opal-control-daemon.git /opt/opal-control-daemon; bash /opt/opal-control-daemon/install.sh'
-
-Cek:
-systemctl status opal-daemon
-journalctl -u opal-daemon -f
+Install (1x):
+1) Clone repo ke VPS:
+   /opt/opal-zivpn-bot
+2) Jalankan:
+   sudo bash /opt/opal-zivpn-bot/install.sh
 
 Update:
-sudo bash /opt/opal-control-daemon/update.sh
+sudo bash /opt/opal-zivpn-bot/update.sh
+
+Log:
+journalctl -u opal-daemon -f
