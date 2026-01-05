@@ -405,31 +405,37 @@ bot.start(async (ctx) => {
   const bottom = "╰" + "━".repeat(Math.min(26, brandTitle.length + 4)) + "╯";
 
   const lines = [
-    `╭━ ${brandTitle} ━╮`,
-    ...brandDesc.map((x) => `┃ ${x}`),
-    bottom,
-    "",
-    `👋 Hai, ${ctx.from.first_name || "Member"}!`,
-    "",
-    `🆔 ${pad("User ID")} : ${uid}`,
-    `💰 ${pad("Saldo")}   : ${formatRupiah(saldo)}`,
-    `🧩 ${pad("Mode")}    : ${MODE.toUpperCase()}`,
-    "",
-    "📊 Statistik Anda",
-    `• Hari ini    : ${today} akun`,
-    `• Minggu ini  : ${week} akun`,
-    `• Bulan ini   : ${month} akun`,
-    "",
-    "🌍 Statistik Global",
-    `• Hari ini    : ${gToday} akun`,
-    `• Minggu ini  : ${gWeek} akun`,
-    `• Bulan ini   : ${gMonth} akun`,
-    "",
-    "☎️ Bantuan / Kontak",
-    c.telegram ? `• Telegram  : ${c.telegram}` : null,
-    c.whatsapp ? `• WhatsApp  : ${c.whatsapp}` : null,
-    c.text ? `• Catatan   : ${c.text}` : null,
-  ].filter(Boolean);
+  `╭━ ${brandTitle} ━╮`,
+  ...brandDesc.map((x) => `┃ ${x}`),
+  "╰━━━━━━━━━━━━━━━━━━━━━━━━━╯",
+  "", // 1 baris kosong setelah header
+
+  `👋 Hai, ${ctx.from.first_name || "Member"}!`,
+  `🆔 ${pad("User ID")} : ${uid}`,
+  `💰 ${pad("Saldo")}   : ${formatRupiah(saldo)}`,
+  `🧩 ${pad("Mode")}    : ${MODE.toUpperCase()}`,
+  "", // kosong 1
+  "", // kosong 2 (biar jauh, seperti contoh bapak)
+
+  "📊 Statistik Anda",
+  `• Hari ini    : ${today} akun`,
+  `• Minggu ini  : ${week} akun`,
+  `• Bulan ini   : ${month} akun`,
+  "", // kosong 1
+  "", // kosong 2
+
+  "🌍 Statistik Global",
+  `• Hari ini    : ${gToday} akun`,
+  `• Minggu ini  : ${gWeek} akun`,
+  `• Bulan ini   : ${gMonth} akun`,
+  "", // kosong 1
+  "", // kosong 2
+
+  "☎️ Bantuan / Kontak",
+  c.telegram ? `• Telegram  : ${c.telegram}` : null,
+  c.whatsapp ? `• WhatsApp  : ${c.whatsapp}` : null,
+  c.text ? `• Catatan   : ${c.text}` : null,
+].filter(Boolean);
 
   return ctx.reply(lines.join("\n"), mainKb(ctx));
 });
