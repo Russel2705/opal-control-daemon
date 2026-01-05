@@ -877,49 +877,29 @@ bot.on("text", async (ctx) => {
     // generate QR image
     const png = await QRCode.toBuffer(qrString, { type: "png", width: 420 });
 
-    // store invoice dulu
-const inv = getInv();
-inv.push({
-  orderId,
-  userId: String(ctx.from.id),
-  project: PAKASIR_PROJECT,
-  amount,
-  totalPay,
-  status: "pending",
-  createdAt: nowISO(),
-});
-setInv(inv);
+    // store invoice
+    const inv = getInv();
+    inv.push({
+      orderId,
+      userId: String(ctx.from.id),
+      project: PAKASIR_PROJECT,
+      amount,
+      totalPay,
+      status: "pending",
+      createdAt: nowISO(),
+    });
+    setInv(inv);
 
-// kirim QR dan ambil message_id
-const sent = await ctx.replyWithPhoto(
-  { source: png },
-  {
-    caption:
-      `✅ TopUp Dibuat\nOrder: ${orderId}\nNominal: ${formatRupiah(amount)}\nTotal Bayar: ${formatRupiah(totalPay)}\n` +
-      (expAt ? `Expired: ${expAt}\n` : "") +
-      `\nSilakan scan QRIS.\n\nJika sudah bayar, saldo masuk otomatis.`,
+    return ctx.replyWithPhoto(
+      { source: png },
+      {
+        caption:
+          `✅ TopUp Dibuat\nOrder: ${orderId}\nNominal: ${formatRupiah(amount)}\nTotal Bayar: ${formatRupiah(totalPay)}\n` +
+          (expAt ? `Expired: ${expAt}\n` : "") +
+          `\nSilakan scan QRIS.\n\nJika sudah bayar, saldo masuk otomatis.`,
+      }
+    );
   }
-);
-
-// simpan chat_id & message_id QR ke invoice (buat nanti dihapus saat paid)
-const inv2 = getInv();
-const it = inv2.find((x) => x.orderId === orderId);
-if (it) {
-  it.tgChatId = ctx.chat.id;
-  it.tgMsgId = sent.message_id;
-  it.qrSentAt = nowISO();
-  setInv(inv2);
-}
-
-// update invoice: simpan message id QR supaya bisa dihapus saat paid
-const inv2 = getInv();
-const found = inv2.find((x) => x.orderId === orderId);
-if (found) {
-  found.tgChatId = ctx.chat.id;          // biasanya sama dengan user id di private chat
-  found.tgMsgId = sent.message_id;
-  found.qrSentAt = nowISO();
-  setInv(inv2);
-}
 
   // default: ignore
 });
@@ -980,35 +960,25 @@ app.post(WEBHOOK_PATH, async (req, res) => {
     if (tStatus !== "completed") return res.json({ ok: true, ignored: true, status: tStatus, rawStatus: status });
 
     // mark invoice + credit balance
-const inv = getInv();
-const i = inv.find((x) => x.orderId === orderId && x.status === "pending");
-if (!i) return res.json({ ok: true, note: "invoice_not_found_or_already_done" });
+    const inv = getInv();
+    const i = inv.find((x) => x.orderId === orderId && x.status === "pending");
+    if (!i) return res.json({ ok: true, note: "invoice_not_found_or_already_done" });
 
-i.status = "paid";
-i.paidAt = nowISO();
-setInv(inv);
+    i.status = "paid";
+    i.paidAt = nowISO();
+    setInv(inv);
 
-// kredit saldo
-addBalance(i.userId, i.amount);
-
-// hapus pesan QR (barcode hilang)
-if (i.tgChatId && i.tgMsgId) {
-  try {
-    await bot.telegram.deleteMessage(i.tgChatId, i.tgMsgId);
+    addBalance(i.userId, i.amount);
+    return res.json({ ok: true });
   } catch (e) {
-    // kalau gagal hapus (misal sudah dihapus / message terlalu lama), abaikan
+    console.error("webhook error:", e.message);
+    return res.status(500).json({ ok: false, error: "server_error" });
   }
-}
+});
 
-// kirim notifikasi sukses
-try {
-  await bot.telegram.sendMessage(
-    i.tgChatId || i.userId,
-    `✅ Pembayaran diterima!\nOrder: ${i.orderId}\nSaldo masuk: ${formatRupiah(i.amount)}`
-  );
-} catch (_) {}
-
-return res.json({ ok: true });
+app.listen(PORT, "127.0.0.1", () => {
+  console.log(`Webhook listening on 127.0.0.1:${PORT}${WEBHOOK_PATH}`);
+});
 
 // ===== Launch bot =====
 bot.launch({ dropPendingUpdates: true }).then(() => {
