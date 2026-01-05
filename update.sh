@@ -1,11 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
-APP_DIR="/opt/opal-zivpn-bot"
-cd "$APP_DIR"
-
+cd /opt/opal-control-daemon
 git pull
 npm install --omit=dev
 systemctl restart opal-daemon
-
-echo "✅ Updated & restarted."
+echo "✅ Updated & restarted"
