@@ -393,46 +393,58 @@ bot.start(async (ctx) => {
   const gWeek = countCreated({ from: startOfWeek() });
   const gMonth = countCreated({ from: startOfMonth() });
 
-  const c = UI.contact || {};
+  // UI fallback aman
+  const brandTitle = String(UI?.brandTitle || "ZiVPN UDP PREMIUM");
+  const brandDesc = Array.isArray(UI?.brandDesc) ? UI.brandDesc.filter(Boolean) : [];
+  const c = UI?.contact || {};
+
+  // helper padding supaya ":" rapi
+  const pad = (label, width = 8) => label + " ".repeat(Math.max(0, width - label.length));
+
+  // border bawah biar tidak kepanjangan (aman di HP)
+  const bottom = "╰" + "━".repeat(Math.min(26, brandTitle.length + 4)) + "╯";
+
   const lines = [
-    `╭━ ${UI.brandTitle} ━╮`,
-    ...(UI.brandDesc || []).map((x) => `┃ ${x}`),
-    "╰━━━━━━━━━━━━━━━━━━╯",
+    `╭━ ${brandTitle} ━╮`,
+    ...brandDesc.map((x) => `┃ ${x}`),
+    bottom,
     "",
-    `👋 Hai, ${ctx.from.first_name}!`,
-    `ID: ${uid}`,
-    `Saldo: ${formatRupiah(saldo)}`,
-    `Mode: ${MODE.toUpperCase()}`,
+    `👋 Hai, ${ctx.from.first_name || "Member"}!`,
+    "",
+    `🆔 ${pad("User ID")} : ${uid}`,
+    `💰 ${pad("Saldo")}   : ${formatRupiah(saldo)}`,
+    `🧩 ${pad("Mode")}    : ${MODE.toUpperCase()}`,
     "",
     "📊 Statistik Anda",
-    `• Hari ini : ${today} akun`,
-    `• Minggu ini: ${week} akun`,
-    `• Bulan ini : ${month} akun`,
+    `• Hari ini    : ${today} akun`,
+    `• Minggu ini  : ${week} akun`,
+    `• Bulan ini   : ${month} akun`,
     "",
     "🌍 Statistik Global",
-    `• Hari ini : ${gToday} akun`,
-    `• Minggu ini: ${gWeek} akun`,
-    `• Bulan ini : ${gMonth} akun`,
+    `• Hari ini    : ${gToday} akun`,
+    `• Minggu ini  : ${gWeek} akun`,
+    `• Bulan ini   : ${gMonth} akun`,
     "",
     "☎️ Bantuan / Kontak",
-    c.telegram ? `• Telegram: ${c.telegram}` : null,
-    c.whatsapp ? `• WhatsApp: ${c.whatsapp}` : null,
-    c.text ? `• ${c.text}` : null,
+    c.telegram ? `• Telegram  : ${c.telegram}` : null,
+    c.whatsapp ? `• WhatsApp  : ${c.whatsapp}` : null,
+    c.text ? `• Catatan   : ${c.text}` : null,
   ].filter(Boolean);
 
   return ctx.reply(lines.join("\n"), mainKb(ctx));
 });
 
+// ===== Bantuan =====
 bot.hears("📞 Bantuan", async (ctx) => {
   const denied = denyIfPrivate(ctx);
   if (denied) return;
 
-  const c = UI.contact || {};
+  const c = UI?.contact || {};
   const msg = [
     "📞 Bantuan / Kontak",
-    c.telegram ? `• Telegram: ${c.telegram}` : null,
-    c.whatsapp ? `• WhatsApp: ${c.whatsapp}` : null,
-    c.text ? `• ${c.text}` : null,
+    c.telegram ? `• Telegram  : ${c.telegram}` : null,
+    c.whatsapp ? `• WhatsApp  : ${c.whatsapp}` : null,
+    c.text ? `• Catatan   : ${c.text}` : null,
   ]
     .filter(Boolean)
     .join("\n");
