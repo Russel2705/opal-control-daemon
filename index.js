@@ -640,7 +640,7 @@ bot.hears("🔎 Cari Akun", async (ctx) => {
 bot.hears("🗑️ Delete Akun", async (ctx) => {
   if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
   ctx.session.delPass = true;
-  return ctx.reply("Kirim password akun untuk dihapus:", adminKb());
+  return ctx.reply("Format hapus: <user_id> <password>\nContoh: 5688411076 eko12345", adminKb());
 });
 
 bot.hears("💳 Tambah Saldo User", async (ctx) => {
