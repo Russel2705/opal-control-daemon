@@ -1,57 +1,79 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CFG="/etc/zivpn/config.json"
-SVC="zivpn.service"
+CONF="/etc/zivpn/config.json"
 
-if [[ $# -lt 2 ]]; then
-  echo "Usage: $0 add|del <password>"
-  exit 1
-fi
+need_root() {
+  if [[ "$(id -u)" -ne 0 ]]; then
+    echo "ERROR: run as root"
+    exit 1
+  fi
+}
 
-ACTION="$1"
-PASS="$2"
+need_jq() {
+  command -v jq >/dev/null 2>&1 || { echo "ERROR: jq not found"; exit 1; }
+}
 
-if [[ "$PASS" =~ [,[:space:]\"] ]]; then
-  echo "Invalid password: must not contain comma/space/quotes"
-  exit 2
-fi
+valid_pass() {
+  local p="$1"
+  # 3-32 chars, no spaces, no comma
+  [[ ${#p} -ge 3 && ${#p} -le 32 ]] || return 1
+  [[ "$p" != *" "* ]] || return 1
+  [[ "$p" != *","* ]] || return 1
+  return 0
+}
 
-exec 9>/var/lock/zivpn-passwd.lock
-flock -x 9
+ensure_conf() {
+  [[ -f "$CONF" ]] || { echo "ERROR: $CONF not found"; exit 1; }
+  jq -e '.auth.config and (.auth.config|type=="array")' "$CONF" >/dev/null || {
+    echo "ERROR: $CONF missing .auth.config array"
+    exit 1
+  }
+}
 
-if [[ ! -f "$CFG" ]]; then
-  echo "ERR: $CFG not found"
-  exit 3
-fi
+cmd="${1:-}"
+pass="${2:-}"
 
-# pastikan auth.config array
-if ! jq -e '.auth.config and (.auth.config|type=="array")' "$CFG" >/dev/null 2>&1; then
-  echo "ERR: auth.config not found or not array"
-  exit 4
-fi
+need_root
+need_jq
+ensure_conf
 
-case "$ACTION" in
+case "$cmd" in
+  check)
+    valid_pass "$pass" || { echo "INVALID"; exit 2; }
+    if jq -e --arg p "$pass" '.auth.config | index($p) != null' "$CONF" >/dev/null; then
+      echo "EXISTS"
+      exit 0
+    else
+      echo "NOT_FOUND"
+      exit 1
+    fi
+    ;;
+
   add)
-    if jq -e --arg p "$PASS" '.auth.config | index($p) != null' "$CFG" >/dev/null; then
-      echo "ERR_EXISTS"
-      exit 10
+    valid_pass "$pass" || { echo "INVALID"; exit 2; }
+    if jq -e --arg p "$pass" '.auth.config | index($p) != null' "$CONF" >/dev/null; then
+      echo "EXISTS"
+      exit 3
     fi
     tmp="$(mktemp)"
-    jq --arg p "$PASS" '.auth.config += [$p]' "$CFG" > "$tmp"
-    mv "$tmp" "$CFG"
+    jq --arg p "$pass" '.auth.config += [$p]' "$CONF" > "$tmp"
+    mv "$tmp" "$CONF"
+    systemctl restart zivpn.service >/dev/null 2>&1 || true
+    echo "ADDED"
     ;;
+
   del)
+    valid_pass "$pass" || { echo "INVALID"; exit 2; }
     tmp="$(mktemp)"
-    jq --arg p "$PASS" '.auth.config |= map(select(. != $p))' "$CFG" > "$tmp"
-    mv "$tmp" "$CFG"
+    jq --arg p "$pass" '.auth.config |= map(select(. != $p))' "$CONF" > "$tmp"
+    mv "$tmp" "$CONF"
+    systemctl restart zivpn.service >/dev/null 2>&1 || true
+    echo "DELETED"
     ;;
+
   *)
-    echo "Unknown action"
-    exit 5
+    echo "Usage: $0 {check|add|del} <password>"
+    exit 1
     ;;
 esac
-
-chmod 600 "$CFG"
-systemctl restart "$SVC"
-echo "OK"
