@@ -1,13 +1,16 @@
 # Opal Control Daemon (FREE/PAID)
 
-- Bot Telegram provisioning akun (Domain/Password/Expired)
-- Core: udp-zivpn (zahidbd2)
-- FREE: bisa PUBLIC/PRIVATE + allowlist via command admin
-- PAID: saldo + topup Pakasir + webhook + SSL
-- ON 24 jam via systemd: opal-daemon
+Fitur:
+- Bot Telegram provisioning akun ZiVPN (Domain/Password/Expired)
+- Integrasi core udp-zivpn (zahidbd2)
+- FREE: public/private + allowlist
+- PAID: saldo + TopUp Pakasir + webhook + SSL
+- PAID: Trial Akun (limit)
+- Admin Panel: create/extend/delete akun, ban/unban, delete user, stats
+- ON 24 jam via systemd (opal-daemon)
 
-Install (repo public):
-sudo bash -c 'set -e; apt update -y; apt install -y git; rm -rf /opt/opal-control-daemon; git clone https://github.com/Russel2705/opal-control-daemon.git /opt/opal-control-daemon; bash /opt/opal-control-daemon/install.sh'
+Install:
+sudo bash -c 'set -e; apt update -y; apt install -y git; rm -rf /opt/opal-control-daemon; git clone https://github.com/USERNAME/opal-control-daemon.git /opt/opal-control-daemon; bash /opt/opal-control-daemon/install.sh'
 
 Cek:
 systemctl status opal-daemon
