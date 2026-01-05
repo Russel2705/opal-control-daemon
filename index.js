@@ -1,865 +1,821 @@
-const { Telegraf, Markup } = require("telegraf");
-const Database = require("better-sqlite3");
-const cron = require("node-cron");
-const axios = require("axios");
-const express = require("express");
-const QRCode = require("qrcode");
 const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
 
+const express = require("express");
+const QRCode = require("qrcode");
+const { Telegraf, Markup, session } = require("telegraf");
+
 // ===== ENV =====
-const MODE = (process.env.MODE || "paid").toLowerCase();
-const IS_PAID = MODE === "paid";
-
+const MODE = (process.env.MODE || "free").toLowerCase(); // free|paid
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const OWNER_ID = Number(process.env.OWNER_ID || 0);
-const ADMIN_IDS = (process.env.ADMIN_IDS || "")
-  .split(",").map(s => s.trim()).filter(Boolean)
-  .map(s => Number(s)).filter(n => Number.isFinite(n) && n > 0);
+const OWNER_ID = String(process.env.OWNER_ID || "");
+const ADMIN_IDS = String(process.env.ADMIN_IDS || "").split(",").map(s => s.trim()).filter(Boolean);
 
-const DB_PATH = process.env.DB_PATH || "/var/lib/opal-daemon/app.db";
+const DB_DIR = process.env.DB_DIR || path.join(__dirname, "data");
 
-const PAKASIR_SLUG = process.env.PAKASIR_SLUG || "";
+const PAKASIR_PROJECT = process.env.PAKASIR_PROJECT || ""; // slug/project
 const PAKASIR_API_KEY = process.env.PAKASIR_API_KEY || "";
-const WEBHOOK_PATH = process.env.WEBHOOK_PATH || "/pakasir/webhook";
+const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || "";
 const PORT = Number(process.env.PORT || 9000);
-const WEBHOOK_TOKEN = (process.env.WEBHOOK_TOKEN || "").trim();
+const WEBHOOK_PATH = process.env.WEBHOOK_PATH || "/pakasir/webhook";
 
-// Trial (paid)
-const TRIAL_ENABLED = (process.env.TRIAL_ENABLED || "true").toLowerCase() === "true";
-const TRIAL_DAYS = Number(process.env.TRIAL_DAYS || 1);
-const TRIAL_ONCE_PER_USER = (process.env.TRIAL_ONCE_PER_USER || "true").toLowerCase() === "true";
-const TRIAL_MAX_DAILY = Number(process.env.TRIAL_MAX_DAILY || 50);
-const TRIAL_PASSWORD_MODE = (process.env.TRIAL_PASSWORD_MODE || "auto").toLowerCase(); // auto/manual
-const TRIAL_PREFIX = (process.env.TRIAL_PREFIX || "TR").toUpperCase();
+const TOPUP_MIN = Number(process.env.TOPUP_MIN || 10000);
 
-if (!BOT_TOKEN) { console.error("Missing BOT_TOKEN"); process.exit(1); }
-if (IS_PAID && (!PAKASIR_SLUG || !PAKASIR_API_KEY)) {
-  console.error("MODE=paid but missing PAKASIR_SLUG/PAKASIR_API_KEY");
+const ZIVPN_PASS_MGR = process.env.ZIVPN_PASS_MGR || "/usr/local/bin/zivpn-passwd-manager";
+
+// FREE access control (optional)
+const FREE_ACCESS = (process.env.FREE_ACCESS || "public").toLowerCase(); // public|private
+
+if (!BOT_TOKEN) {
+  console.error("BOT_TOKEN is missing");
   process.exit(1);
 }
 
-// ===== Helpers =====
-function isOwner(tgId) { return OWNER_ID && Number(tgId) === Number(OWNER_ID); }
-function isAdmin(tgId) { return isOwner(tgId) || ADMIN_IDS.includes(Number(tgId)); }
-
-function rupiah(n) {
-  const x = Number(n || 0);
-  return "Rp" + x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
-}
-function nowIso() { return new Date().toISOString(); }
-function addDaysIsoFrom(baseIso, days) {
-  const d = new Date(baseIso);
-  d.setDate(d.getDate() + days);
-  return d.toISOString();
-}
-function fmtWIB(iso) {
-  const d = new Date(iso);
-  const pad = (x) => String(x).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())} WIB`;
-}
-function validPassword(p) {
-  return typeof p === "string" && p.length >= 3 && p.length <= 32 && !/[,\s"]/.test(p);
+function isAdminId(userId) {
+  const uid = String(userId);
+  return uid === OWNER_ID || ADMIN_IDS.includes(uid);
 }
 
-// ===== Load servers =====
+function canUseBot(ctx) {
+  if (MODE === "paid") return true;
+  if (FREE_ACCESS === "public") return true;
+  return isAdminId(ctx.from.id);
+}
+
+// ===== Load UI =====
+function readJsonSafe(p, fallback) {
+  try {
+    if (!fs.existsSync(p)) return fallback;
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) {
+    console.error("readJsonSafe:", p, e.message);
+    return fallback;
+  }
+}
+
+const UI = readJsonSafe(path.join(__dirname, "config", "ui.json"), {
+  brandTitle: "⚡ ZiVPN UDP PREMIUM ⚡",
+  brandDesc: [],
+  contact: {}
+});
+
+// ===== Simple JSON DB =====
+function ensureDir(p) {
+  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+}
+ensureDir(DB_DIR);
+
+const USERS_DB = path.join(DB_DIR, "users.json");
+const ACC_DB = path.join(DB_DIR, "accounts.json");
+const INV_DB = path.join(DB_DIR, "invoices.json");
+
+function dbRead(file, fallback) {
+  return readJsonSafe(file, fallback);
+}
+function dbWrite(file, data) {
+  ensureDir(path.dirname(file));
+  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+
+function getUsers() { return dbRead(USERS_DB, []); }
+function setUsers(x) { dbWrite(USERS_DB, x); }
+
+function getAcc() { return dbRead(ACC_DB, []); }
+function setAcc(x) { dbWrite(ACC_DB, x); }
+
+function getInv() { return dbRead(INV_DB, []); }
+function setInv(x) { dbWrite(INV_DB, x); }
+
+// ===== Users / Balance =====
+function upsertUser(userId, firstName) {
+  const all = getUsers();
+  const uid = String(userId);
+  let u = all.find(x => String(x.userId) === uid);
+  if (!u) {
+    u = { userId: uid, firstName: firstName || "", balance: 0, createdAt: new Date().toISOString() };
+    all.push(u);
+    setUsers(all);
+  } else if (firstName && u.firstName !== firstName) {
+    u.firstName = firstName;
+    setUsers(all);
+  }
+  return u;
+}
+function getBalance(userId) {
+  const u = getUsers().find(x => String(x.userId) === String(userId));
+  return u ? Number(u.balance || 0) : 0;
+}
+function addBalance(userId, amount) {
+  const all = getUsers();
+  const uid = String(userId);
+  let u = all.find(x => String(x.userId) === uid);
+  if (!u) {
+    u = { userId: uid, firstName: "", balance: 0, createdAt: new Date().toISOString() };
+    all.push(u);
+  }
+  u.balance = Number(u.balance || 0) + Number(amount || 0);
+  setUsers(all);
+  return u.balance;
+}
+function subBalance(userId, amount) {
+  const all = getUsers();
+  const uid = String(userId);
+  let u = all.find(x => String(x.userId) === uid);
+  if (!u) return false;
+  const cur = Number(u.balance || 0);
+  if (cur < amount) return false;
+  u.balance = cur - amount;
+  setUsers(all);
+  return true;
+}
+
+// ===== Servers =====
 function loadServers() {
   const p = path.join(__dirname, "config", "servers.json");
-
-  // ✅ jangan crash kalau file belum ada
   if (!fs.existsSync(p)) return [];
-
   try {
     const raw = JSON.parse(fs.readFileSync(p, "utf8"));
     if (!Array.isArray(raw)) return [];
-    // enabled default true kalau field enabled tidak ada
     return raw.filter(s => s && s.enabled !== false);
   } catch (e) {
     console.error("servers.json invalid:", e.message);
     return [];
   }
 }
-
 function getServer(code) {
   return loadServers().find(s => s.code === code);
 }
 
+function nowISO() { return new Date().toISOString(); }
+function addDaysISO(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + Number(days));
+  return d.toISOString();
+}
 
-// ===== ZiVPN integration =====
-function zivpnAddPassword(password) {
-  return new Promise((resolve, reject) => {
-    execFile("/usr/local/bin/zivpn-passwd-manager", ["add", password], (err, stdout, stderr) => {
-      if (err) return reject(new Error((stderr || stdout || err.message || "").toString()));
-      resolve((stdout || "").toString().trim());
+function isExpired(acc) {
+  return new Date(acc.expiredAt).getTime() <= Date.now();
+}
+
+function activeAccounts() {
+  // active + not expired (logic)
+  const all = getAcc();
+  return all.filter(a => a && a.status === "active" && !isExpired(a));
+}
+
+function countUsed(serverCode) {
+  return activeAccounts().filter(a => a.serverCode === serverCode).length;
+}
+
+function formatRupiah(n) {
+  const x = Number(n || 0);
+  return "Rp" + x.toLocaleString("id-ID");
+}
+
+function serverCard(s) {
+  const used = countUsed(s.code);
+  const cap = Number(s.capacity || 0);
+  const status = (cap > 0 && used >= cap) ? "⚠️ Penuh" : "✅ Tersedia";
+  const p1 = s.prices?.["1"] ?? 0;
+  const p30 = s.prices?.["30"] ?? 0;
+
+  return [
+    "╔══════════════════════╗",
+    `  ${s.name || s.code}`,
+    "╚══════════════════════╝",
+    `🛜 Domain: ${s.host}`,
+    `💳 Harga/1 hari: ${formatRupiah(p1)}`,
+    `📆 Harga/30 hari: ${formatRupiah(p30)}`,
+    `📡 Quota: ${Number(s.quota_gb || 0)} GB`,
+    `🔐 IP Limit: ${Number(s.ip_limit || 1)} IP`,
+    `👥 Akun Terpakai: ${used}/${cap || "-"}`,
+    `📌 Status: ${status}`
+  ].join("\n");
+}
+
+// ===== Stats =====
+function startOfDay(d = new Date()) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
+function startOfWeek(d = new Date()) {
+  const x = startOfDay(d);
+  const day = (x.getDay() + 6) % 7;
+  x.setDate(x.getDate() - day);
+  return x;
+}
+function startOfMonth(d = new Date()) { const x = startOfDay(d); x.setDate(1); return x; }
+
+function countCreated({ userId = null, from = null } = {}) {
+  const all = getAcc();
+  return all.filter(a => {
+    if (!a) return false;
+    const t = new Date(a.createdAt || 0).getTime();
+    if (from && t < from.getTime()) return false;
+    if (userId && String(a.userId) !== String(userId)) return false;
+    return true;
+  }).length;
+}
+
+// ===== ZIVPN Password ops =====
+function passCheck(pass) {
+  return new Promise((resolve) => {
+    execFile(ZIVPN_PASS_MGR, ["check", pass], (err, stdout) => {
+      const out = String(stdout || "").trim();
+      if (!err && out === "EXISTS") return resolve(true);
+      return resolve(false);
     });
   });
 }
-function zivpnDelPassword(password) {
+function passAdd(pass) {
   return new Promise((resolve, reject) => {
-    execFile("/usr/local/bin/zivpn-passwd-manager", ["del", password], (err, stdout, stderr) => {
-      if (err) return reject(new Error((stderr || stdout || err.message || "").toString()));
-      resolve((stdout || "").toString().trim());
+    execFile(ZIVPN_PASS_MGR, ["add", pass], (err, stdout, stderr) => {
+      if (err) return reject(new Error(String(stderr || err.message)));
+      resolve(String(stdout || "").trim());
     });
   });
 }
-
-// ===== DB =====
-const db = new Database(DB_PATH);
-db.pragma("journal_mode = WAL");
-
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  tg_id INTEGER PRIMARY KEY,
-  saldo INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS invoices (
-  order_id TEXT PRIMARY KEY,
-  tg_id INTEGER NOT NULL,
-  amount INTEGER NOT NULL,
-  status TEXT NOT NULL DEFAULT 'pending',
-  qris_string TEXT,
-  qris_expired_at TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  paid_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS accounts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  tg_id INTEGER NOT NULL,
-  server_code TEXT,
-  host TEXT,
-  password TEXT NOT NULL,
-  is_trial INTEGER NOT NULL DEFAULT 0,
-  expired_at TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'active',
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE TABLE IF NOT EXISTS trials (
-  tg_id INTEGER PRIMARY KEY,
-  used_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
-
-CREATE INDEX IF NOT EXISTS idx_accounts_pass ON accounts(password, status);
-CREATE INDEX IF NOT EXISTS idx_accounts_tg ON accounts(tg_id);
-`);
-
-function upsertUser(tgId) {
-  db.prepare(`INSERT OR IGNORE INTO users(tg_id) VALUES(?)`).run(tgId);
-  return db.prepare(`SELECT tg_id, saldo FROM users WHERE tg_id=?`).get(tgId);
-}
-function getSaldo(tgId) {
-  return db.prepare(`SELECT saldo FROM users WHERE tg_id=?`).get(tgId)?.saldo || 0;
-}
-function addSaldo(tgId, amount) {
-  db.prepare(`UPDATE users SET saldo = saldo + ? WHERE tg_id=?`).run(amount, tgId);
-}
-function debitSaldo(tgId, amount) {
-  const s = getSaldo(tgId);
-  if (s < amount) return false;
-  db.prepare(`UPDATE users SET saldo = saldo - ? WHERE tg_id=?`).run(amount, tgId);
-  return true;
-}
-
-function activeCountByServer(code) {
-  const now = nowIso();
-  return db.prepare(`
-    SELECT COUNT(*) AS c FROM accounts
-    WHERE status='active' AND server_code=? AND expired_at > ?
-  `).get(code, now)?.c || 0;
-}
-
-function formatServerList() {
-  const servers = loadServers();
-  let out = "";
-  for (const s of servers) {
-    const used = activeCountByServer(s.code);
-    const full = used >= Number(s.capacity || 0);
-    out +=
-`🌐 ${s.name}
-💰 Harga per hari: Rp${s.prices?.["1"] ?? 0}
-📅 Harga per 30 hari: Rp${s.prices?.["30"] ?? 0}
-📊 Quota: ${s.quota_gb ?? 0}GB
-🔐 Limit IP: ${s.ip_limit ?? 1} IP
-👥 Akun Terpakai: ${used}/${s.capacity}
-${full ? "⚠️ Server Penuh" : "✅ Tersedia"}
-
-`;
-  }
-  return out.trim();
-}
-
-function serverButtons() {
-  const servers = loadServers();
-  const rows = [];
-  for (let i = 0; i < servers.length; i += 2) {
-    const a = servers[i];
-    const b = servers[i+1];
-    const row = [Markup.button.callback(a.code, `SRV:${a.code}`)];
-    if (b) row.push(Markup.button.callback(b.code, `SRV:${b.code}`));
-    rows.push(row);
-  }
-  rows.push([Markup.button.callback("🏠 Menu Utama", "BACK_MENU")]);
-  return Markup.inlineKeyboard(rows);
-}
-
-// ===== Trial helpers =====
-function trialUsed(tgId) {
-  return !!db.prepare(`SELECT 1 FROM trials WHERE tg_id=?`).get(tgId);
-}
-function trialDailyCount() {
-  return db.prepare(`SELECT COUNT(*) AS c FROM trials WHERE date(used_at,'localtime')=date('now','localtime')`).get()?.c || 0;
-}
-function markTrialUsed(tgId) {
-  db.prepare(`INSERT OR IGNORE INTO trials(tg_id) VALUES(?)`).run(tgId);
-}
-function genTrialPassword() {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let s = "";
-  for (let i=0;i<6;i++) s += chars[Math.floor(Math.random()*chars.length)];
-  return `${TRIAL_PREFIX}-${s}`;
-}
-
-// ===== Pakasir helpers =====
-// NOTE: struktur response Pakasir bisa beda-beda. Kalau error, cek log console.
-async function pakasirCreateQris(orderId, amount) {
-  const url = "https://app.pakasir.com/api/transactioncreate/qris";
-  const res = await axios.post(url, {
-    project: PAKASIR_SLUG,
-    order_id: orderId,
-    amount,
-    api_key: PAKASIR_API_KEY
-  }, { timeout: 15000 });
-  return res.data;
-}
-
-async function pakasirVerifyDetail(orderId, amount) {
-  const url = "https://app.pakasir.com/api/transactiondetail";
-  const res = await axios.get(url, {
-    params: { project: PAKASIR_SLUG, amount, order_id: orderId, api_key: PAKASIR_API_KEY },
-    timeout: 15000
+function passDel(pass) {
+  return new Promise((resolve) => {
+    execFile(ZIVPN_PASS_MGR, ["del", pass], () => resolve(true));
   });
-  return res.data;
-}
-
-function pickQrisString(apiData) {
-  return (
-    apiData?.payment?.payment_number ||
-    apiData?.data?.payment?.payment_number ||
-    apiData?.payment_number ||
-    ""
-  );
-}
-function pickExpired(apiData) {
-  return (
-    apiData?.payment?.expired_at ||
-    apiData?.data?.payment?.expired_at ||
-    apiData?.expired_at ||
-    ""
-  );
-}
-function pickStatusFromDetail(detail) {
-  // coba berbagai kemungkinan field
-  const tx = detail?.transaction || detail?.data?.transaction || detail;
-  const s = (tx?.status || tx?.data?.status || "").toString().toLowerCase();
-  return s;
-}
-
-async function sendQris(ctx, orderId, amount, qrisString, expiredAt) {
-  const png = await QRCode.toBuffer(qrisString, { type: "png", width: 420 });
-  const caption =
-`✅ Silakan bayar via QRIS
-
-Order   : ${orderId}
-Nominal : ${rupiah(amount)}
-Expired : ${expiredAt || "-"}
-
-Setelah bayar, saldo masuk otomatis.`;
-  await ctx.replyWithPhoto({ source: png }, { caption });
 }
 
 // ===== Bot =====
 const bot = new Telegraf(BOT_TOKEN);
-const state = new Map(); // tgId -> session
+bot.use(session());
 
-// Keyboard utama
+bot.catch((err) => console.error("BOT ERROR:", err));
+process.on("unhandledRejection", (r) => console.error("UNHANDLED:", r));
+process.on("uncaughtException", (e) => console.error("UNCAUGHT:", e));
+
 function mainKb(ctx) {
-  const base = [
+  const rows = [
     ["➕ Buat Akun", "♻️ Perpanjang Akun"],
-    ...(IS_PAID ? [["⏳ Trial Akun", "💰 TopUp Saldo"]] : []),
+    ["⏳ Trial Akun", MODE === "paid" ? "💰 TopUp Saldo" : "📌 Bantuan"],
     ["📌 Akun Saya", "📞 Bantuan"]
   ];
-  if (ctx && isAdmin(ctx.from.id)) base.push(["⚙️ Admin Panel"]);
-  return Markup.keyboard(base).resize();
+  if (isAdminId(ctx.from.id)) rows.push(["⚙️ Admin Panel"]);
+  return Markup.keyboard(rows).resize();
 }
 
-async function showStart(ctx) {
-  const u = upsertUser(ctx.from.id);
-  const header =
-`╭─⚡ ZIVPN UDP PREMIUM ⚡─╮
-│ Bot VPN UDP dengan sistem otomatis
-│ Akses internet cepat & aman
-╰────────────────────────╯`;
-
-  const text =
-`${header}
-
-👋 Hai, ${ctx.from.first_name}!
-ID: ${u.tg_id}
-Saldo: ${IS_PAID ? rupiah(u.saldo) : "Rp 0"}
-Mode: ${IS_PAID ? "PAID" : "FREE"}
-
-Pilih menu 👇`;
-
-  return ctx.reply(text, mainKb(ctx));
+function adminKb() {
+  return Markup.keyboard([
+    ["📋 List Akun Aktif", "🔎 Cari Akun"],
+    ["🗑️ Delete Akun", "💳 Tambah Saldo User"],
+    ["⬅️ Kembali"]
+  ]).resize();
 }
 
-bot.start(showStart);
-bot.command("start", showStart);
+function denyIfPrivate(ctx) {
+  if (!canUseBot(ctx)) {
+    return ctx.reply("❌ Bot ini mode PRIVATE. Hubungi admin untuk akses.");
+  }
+  return null;
+}
 
-// Bantuan
+bot.start(async (ctx) => {
+  const denied = denyIfPrivate(ctx); if (denied) return;
+  upsertUser(ctx.from.id, ctx.from.first_name);
+
+  const uid = ctx.from.id;
+  const saldo = getBalance(uid);
+
+  const today = countCreated({ userId: uid, from: startOfDay() });
+  const week  = countCreated({ userId: uid, from: startOfWeek() });
+  const month = countCreated({ userId: uid, from: startOfMonth() });
+
+  const gToday = countCreated({ from: startOfDay() });
+  const gWeek  = countCreated({ from: startOfWeek() });
+  const gMonth = countCreated({ from: startOfMonth() });
+
+  const c = UI.contact || {};
+  const lines = [
+    `╭━ ${UI.brandTitle} ━╮`,
+    ...(UI.brandDesc || []).map(x => `┃ ${x}`),
+    "╰━━━━━━━━━━━━━━━━━━╯",
+    "",
+    `👋 Hai, ${ctx.from.first_name}!`,
+    `ID: ${uid}`,
+    `Saldo: ${formatRupiah(saldo)}`,
+    `Mode: ${MODE.toUpperCase()}`,
+    "",
+    "📊 Statistik Anda",
+    `• Hari ini : ${today} akun`,
+    `• Minggu ini: ${week} akun`,
+    `• Bulan ini : ${month} akun`,
+    "",
+    "🌍 Statistik Global",
+    `• Hari ini : ${gToday} akun`,
+    `• Minggu ini: ${gWeek} akun`,
+    `• Bulan ini : ${gMonth} akun`,
+    "",
+    "☎️ Bantuan / Kontak",
+    c.telegram ? `• Telegram: ${c.telegram}` : null,
+    c.whatsapp ? `• WhatsApp: ${c.whatsapp}` : null,
+    c.text ? `• ${c.text}` : null
+  ].filter(Boolean);
+
+  return ctx.reply(lines.join("\n"), mainKb(ctx));
+});
+
 bot.hears("📞 Bantuan", async (ctx) => {
+  const denied = denyIfPrivate(ctx); if (denied) return;
+  const c = UI.contact || {};
+  const msg = [
+    "📞 Bantuan / Kontak",
+    c.telegram ? `• Telegram: ${c.telegram}` : null,
+    c.whatsapp ? `• WhatsApp: ${c.whatsapp}` : null,
+    c.text ? `• ${c.text}` : null
+  ].filter(Boolean).join("\n");
+  return ctx.reply(msg, mainKb(ctx));
+});
+
+// ===== Server list inline buttons =====
+function serversInline() {
+  const sv = loadServers();
+  const buttons = sv.map(s => Markup.button.callback(s.code, `srv:${s.code}`));
+  // 2 kolom
+  const rows = [];
+  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  return Markup.inlineKeyboard(rows);
+}
+
+function packageInline(serverCode, isTrial=false) {
+  const s = getServer(serverCode);
+  const days = [1, 14, 30];
+  const rows = days.map(d => {
+    let price = 0;
+    if (!isTrial && MODE === "paid") price = Number(s?.prices?.[String(d)] || 0);
+    return [Markup.button.callback(`${d} Hari ${MODE==="paid" && !isTrial ? `(${formatRupiah(price)})` : "(GRATIS)"}`, `pkg:${serverCode}:${d}:${isTrial?1:0}`)];
+  });
+  rows.push([Markup.button.callback("⬅️ Kembali", "back:servers")]);
+  return Markup.inlineKeyboard(rows);
+}
+
+bot.hears("➕ Buat Akun", async (ctx) => {
+  const denied = denyIfPrivate(ctx); if (denied) return;
+
+  const sv = loadServers();
+  if (!sv.length) return ctx.reply("❌ Config server belum ada. Isi: config/servers.json", mainKb(ctx));
+
+  const text = sv.map(serverCard).join("\n\n");
+  return ctx.reply(text, serversInline());
+});
+
+bot.hears("⏳ Trial Akun", async (ctx) => {
+  const denied = denyIfPrivate(ctx); if (denied) return;
+
+  const sv = loadServers();
+  if (!sv.length) return ctx.reply("❌ Config server belum ada. Isi: config/servers.json", mainKb(ctx));
+
+  // Trial: hanya 1x per user (contoh sederhana)
+  const u = upsertUser(ctx.from.id, ctx.from.first_name);
+  const users = getUsers();
+  const me = users.find(x => x.userId === u.userId);
+  if (me && me.trialUsed) {
+    return ctx.reply("❌ Trial hanya 1x untuk tiap user.", mainKb(ctx));
+  }
+
+  const text = "✅ PILIH SERVER (TRIAL)\n\n" + sv.map(serverCard).join("\n\n");
+  return ctx.reply(text, serversInline());
+});
+
+bot.action("back:servers", async (ctx) => {
+  await ctx.answerCbQuery();
+  const sv = loadServers();
+  const text = sv.map(serverCard).join("\n\n");
+  return ctx.editMessageText(text, serversInline());
+});
+
+bot.action(/^srv:(.+)$/i, async (ctx) => {
+  await ctx.answerCbQuery();
+  const code = ctx.match[1];
+  const s = getServer(code);
+  if (!s) return ctx.reply("Server tidak ditemukan.");
+
+  const isTrial = (ctx.update.callback_query.message.text || "").includes("(TRIAL)") || false;
+  const msg = serverCard(s) + "\n\n🛒 Pilih Paket:";
+  return ctx.editMessageText(msg, packageInline(code, isTrial));
+});
+
+bot.action(/^pkg:([^:]+):(\d+):(\d)$/i, async (ctx) => {
+  await ctx.answerCbQuery();
+  const serverCode = ctx.match[1];
+  const days = Number(ctx.match[2]);
+  const isTrial = ctx.match[3] === "1";
+
+  const s = getServer(serverCode);
+  if (!s) return ctx.reply("Server tidak ditemukan.");
+
+  // cek slot
+  const used = countUsed(serverCode);
+  if (s.capacity && used >= s.capacity) return ctx.reply("⚠️ Server penuh. Pilih server lain.", mainKb(ctx));
+
+  // paid: cek saldo
+  let price = 0;
+  if (MODE === "paid" && !isTrial) {
+    price = Number(s.prices?.[String(days)] || 0);
+    if (price <= 0) return ctx.reply("Harga paket belum diset di servers.json");
+    const bal = getBalance(ctx.from.id);
+    if (bal < price) return ctx.reply(`❌ Saldo kurang. Harga: ${formatRupiah(price)}\nSaldo: ${formatRupiah(bal)}`, mainKb(ctx));
+  }
+
+  ctx.session.flow = {
+    type: isTrial ? "trial" : "create",
+    serverCode,
+    days,
+    price
+  };
+
   return ctx.reply(
-`📞 Bantuan
-
-• Buat Akun: pilih server → pilih paket → masukkan password unik
-• Password: 3-32 karakter, tanpa spasi/koma, harus unik
-${IS_PAID ? "• TopUp minimal Rp 10.000\n• QRIS akan muncul otomatis\n" : ""}
-
-Jika ada kendala, hubungi admin.`,
+    `🔑 Masukkan password akun\nAturan:\n• 3-32 karakter\n• Tanpa spasi/koma\n• Harus unik\n\nPaket: ${days} hari`,
     mainKb(ctx)
   );
 });
 
-// Buat akun → list server
-bot.hears("➕ Buat Akun", async (ctx) => {
-  upsertUser(ctx.from.id);
-
-  const servers = loadServers();
-  if (!servers.length) {
-    return ctx.reply("❌ Config server belum ada / belum diisi.\n\nBuat file: config/servers.json", mainKb(ctx));
-  }
-
-  return ctx.reply(formatServerList(), serverButtons());
+// ===== Perpanjang =====
+bot.hears("♻️ Perpanjang Akun", async (ctx) => {
+  const denied = denyIfPrivate(ctx); if (denied) return;
+  ctx.session.renew = true;
+  return ctx.reply("🔑 Kirim password akun yang ingin diperpanjang:", mainKb(ctx));
 });
 
-// Callback handling
-bot.on("callback_query", async (ctx) => {
-  const tgId = ctx.from.id;
-  upsertUser(tgId);
-  const data = ctx.callbackQuery.data || "";
+// ===== Akun Saya =====
+bot.hears("📌 Akun Saya", async (ctx) => {
+  const denied = denyIfPrivate(ctx); if (denied) return;
+  const uid = String(ctx.from.id);
+  const mine = activeAccounts().filter(a => String(a.userId) === uid);
+  if (!mine.length) return ctx.reply("Belum ada akun aktif.", mainKb(ctx));
 
-  if (data === "BACK_MENU") {
-    await ctx.answerCbQuery();
-    return showStart(ctx);
-  }
+  const msg = mine.map((a, i) =>
+    `${i+1}) Domain: ${a.host}\nPassword: ${a.password}\nExpired: ${new Date(a.expiredAt).toLocaleString("id-ID")}\nServer: ${a.serverCode}\n---`
+  ).join("\n");
 
-  // pilih server
-  if (data.startsWith("SRV:")) {
-    const code = data.split(":")[1];
-    const s = getServer(code);
-    if (!s) { await ctx.answerCbQuery("Server tidak ditemukan", { show_alert:true }); return; }
-
-    const used = activeCountByServer(code);
-    if (used >= s.capacity) { await ctx.answerCbQuery("Server penuh", { show_alert:true }); return; }
-
-    state.set(tgId, { mode: "PICK_PACKAGE", server_code: code });
-    await ctx.answerCbQuery();
-
-    const paketText =
-`✅ PILIH SERVER
-
-🌐 ${s.name}
-💰 Harga per hari: Rp${s.prices["1"]}
-📅 Harga per 30 hari: Rp${s.prices["30"]}
-📊 Quota: ${s.quota_gb}GB
-🔐 Limit IP: ${s.ip_limit} IP
-👥 Akun Terpakai: ${used}/${s.capacity}
-
-🛒 Pilih Paket:
-Host: ${s.host}`;
-
-    return ctx.reply(
-      paketText,
-      Markup.inlineKeyboard([
-        [
-          Markup.button.callback("1 Hari", "PKG:1"),
-          Markup.button.callback("14 Hari", "PKG:14"),
-          Markup.button.callback("30 Hari", "PKG:30")
-        ],
-        [Markup.button.callback("🔙 Kembali ke List Server", "BACK_SERVERS")],
-        [Markup.button.callback("🏠 Menu Utama", "BACK_MENU")]
-      ])
-    );
-  }
-
-  if (data === "BACK_SERVERS") {
-    await ctx.answerCbQuery();
-    return ctx.reply(formatServerList(), serverButtons());
-  }
-
-  // pilih paket (days)
-  if (data.startsWith("PKG:")) {
-    const days = Number(data.split(":")[1] || 0);
-    if (![1,14,30].includes(days)) { await ctx.answerCbQuery("Paket tidak valid", { show_alert:true }); return; }
-
-    const st = state.get(tgId);
-    if (!st || st.mode !== "PICK_PACKAGE") { await ctx.answerCbQuery("Pilih server dulu", { show_alert:true }); return; }
-
-    const s = getServer(st.server_code);
-    if (!s) { await ctx.answerCbQuery("Server tidak ditemukan", { show_alert:true }); return; }
-
-    const price = IS_PAID ? Number(s.prices[String(days)] || 0) : 0;
-
-    state.set(tgId, { mode: "BUY_PASSWORD", server_code: s.code, days, price });
-    await ctx.answerCbQuery("Masukkan password");
-
-    return ctx.reply(
-`🔑 Masukkan password akun
-
-Aturan:
-• 3-32 karakter
-• Tanpa spasi/koma
-• Harus unik
-
-Paket: ${days} hari`,
-      Markup.keyboard([["🏠 Menu Utama"]]).resize()
-    );
-  }
-
-  // Topup preset
-  if (IS_PAID && data.startsWith("TOPUP:")) {
-    const amount = Number(data.split(":")[1] || 0);
-    if (amount < 10000) { await ctx.answerCbQuery("Minimal 10.000", { show_alert:true }); return; }
-
-    const orderId = `TOPUP-${tgId}-${Date.now()}`;
-    db.prepare(`INSERT INTO invoices(order_id,tg_id,amount,status) VALUES(?,?,?,'pending')`).run(orderId, tgId, amount);
-
-    await ctx.answerCbQuery("Membuat QRIS...");
-
-    try {
-      const apiData = await pakasirCreateQris(orderId, amount);
-      const qrisString = pickQrisString(apiData);
-      const expiredAt = pickExpired(apiData);
-
-      if (!qrisString) {
-        return ctx.reply("Gagal ambil QRIS. Cek PAKASIR_SLUG/API_KEY. Lihat log service untuk detail.", mainKb(ctx));
-      }
-
-      db.prepare(`UPDATE invoices SET qris_string=?, qris_expired_at=? WHERE order_id=?`)
-        .run(qrisString, expiredAt, orderId);
-
-      await sendQris(ctx, orderId, amount, qrisString, expiredAt);
-      return;
-    } catch (e) {
-      return ctx.reply(`Gagal membuat QRIS: ${(e.message||"").toString()}`, mainKb(ctx));
-    }
-  }
-
-  // Admin panel (ringan)
-  if (data === "ADM:STATS") {
-    if (!isAdmin(tgId)) { await ctx.answerCbQuery("No access", { show_alert:true }); return; }
-    await ctx.answerCbQuery();
-    const users = db.prepare(`SELECT COUNT(*) c FROM users`).get().c;
-    const active = db.prepare(`SELECT COUNT(*) c FROM accounts WHERE status='active'`).get().c;
-    const expired = db.prepare(`SELECT COUNT(*) c FROM accounts WHERE status='expired'`).get().c;
-    return ctx.reply(`📊 Statistik\nUsers: ${users}\nAkun aktif: ${active}\nAkun expired: ${expired}`, mainKb(ctx));
-  }
-
-  await ctx.answerCbQuery("OK");
+  return ctx.reply(msg, mainKb(ctx));
 });
 
-// Menu tombol text
-bot.hears("🏠 Menu Utama", showStart);
-
+// ===== TopUp (PAID) =====
 bot.hears("💰 TopUp Saldo", async (ctx) => {
-  if (!IS_PAID) return ctx.reply("TopUp hanya tersedia di MODE=paid.", mainKb(ctx));
-  upsertUser(ctx.from.id);
+  const denied = denyIfPrivate(ctx); if (denied) return;
+  if (MODE !== "paid") return ctx.reply("Fitur topup hanya untuk mode PAID.", mainKb(ctx));
+
+  ctx.session.topup = true;
+  return ctx.reply(`Masukkan nominal topup (min ${formatRupiah(TOPUP_MIN)}). Contoh: 10000`, mainKb(ctx));
+});
+
+// ===== Admin Panel =====
+bot.hears("⚙️ Admin Panel", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+  return ctx.reply("⚙️ Admin Panel", adminKb());
+});
+
+bot.hears("⬅️ Kembali", async (ctx) => {
+  return ctx.reply("Kembali ke menu utama.", mainKb(ctx));
+});
+
+bot.hears("📋 List Akun Aktif", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+  const acc = activeAccounts().slice(-50).reverse();
+  if (!acc.length) return ctx.reply("Belum ada akun aktif.", adminKb());
+
+  const msg = acc.map((a, i) =>
+    `${i+1}) ${a.serverCode}\nDomain: ${a.host}\nPass: ${a.password}\nExp: ${new Date(a.expiredAt).toLocaleString("id-ID")}\nUserID: ${a.userId}\n---`
+  ).join("\n");
+  return ctx.reply(msg, adminKb());
+});
+
+bot.hears("🔎 Cari Akun", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+  ctx.session.findPass = true;
+  return ctx.reply("Kirim password akun untuk dicek:", adminKb());
+});
+
+bot.hears("🗑️ Delete Akun", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+  ctx.session.delPass = true;
+  return ctx.reply("Kirim password akun untuk dihapus:", adminKb());
+});
+
+bot.hears("💳 Tambah Saldo User", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+  ctx.session.addSaldo = true;
+  return ctx.reply("Format: <user_id> <nominal>\nContoh: 5688411076 20000", adminKb());
+});
+
+// ===== Text handler for flows =====
+bot.on("text", async (ctx) => {
+  const denied = denyIfPrivate(ctx); if (denied) return;
+
+  const text = String(ctx.message.text || "").trim();
+  upsertUser(ctx.from.id, ctx.from.first_name);
+
+  // Admin: find
+  if (ctx.session.findPass && isAdminId(ctx.from.id)) {
+    ctx.session.findPass = false;
+    const a = getAcc().find(x => x.password === text);
+    if (!a) return ctx.reply("Tidak ditemukan.", adminKb());
+    return ctx.reply(
+      `✅ Ditemukan\nDomain: ${a.host}\nPass: ${a.password}\nExp: ${new Date(a.expiredAt).toLocaleString("id-ID")}\nStatus: ${a.status}\nUserID: ${a.userId}`,
+      adminKb()
+    );
+  }
+
+  // Admin: delete
+  if (ctx.session.delPass && isAdminId(ctx.from.id)) {
+    ctx.session.delPass = false;
+    const pass = text;
+    const all = getAcc();
+    const idx = all.findIndex(a => a.password === pass && a.status === "active");
+    if (idx === -1) return ctx.reply("Akun tidak ditemukan / sudah dihapus.", adminKb());
+
+    all[idx].status = "deleted";
+    all[idx].deletedAt = nowISO();
+    all[idx].deletedReason = "admin";
+    setAcc(all);
+
+    await passDel(pass);
+    return ctx.reply("✅ Akun sudah dihapus.", adminKb());
+  }
+
+  // Admin: add saldo
+  if (ctx.session.addSaldo && isAdminId(ctx.from.id)) {
+    ctx.session.addSaldo = false;
+    const parts = text.split(/\s+/);
+    if (parts.length < 2) return ctx.reply("Format salah. Contoh: 5688411076 20000", adminKb());
+    const uid = parts[0];
+    const amt = Number(parts[1]);
+    if (!amt || amt <= 0) return ctx.reply("Nominal tidak valid.", adminKb());
+    addBalance(uid, amt);
+    return ctx.reply(`✅ Saldo user ${uid} ditambah ${formatRupiah(amt)}`, adminKb());
+  }
+
+  // Renew flow
+  if (ctx.session.renew) {
+    ctx.session.renew = false;
+    const pass = text;
+
+    const all = getAcc();
+    const a = all.find(x => x.password === pass && x.status === "active" && !isExpired(x));
+    if (!a) return ctx.reply("❌ Akun tidak ditemukan / sudah expired.", mainKb(ctx));
+
+    // tampil pilihan paket (sesuai server)
+    const s = getServer(a.serverCode);
+    if (!s) return ctx.reply("Server config tidak ditemukan.", mainKb(ctx));
+
+    ctx.session.flow = { type: "renew", password: pass, serverCode: a.serverCode };
+    const rows = [1,14,30].map(d => {
+      const price = (MODE === "paid") ? Number(s.prices?.[String(d)] || 0) : 0;
+      return [Markup.button.callback(`${d} Hari ${MODE==="paid" ? `(${formatRupiah(price)})` : "(GRATIS)"}`, `renew:${pass}:${d}`)];
+    });
+    return ctx.reply("Pilih paket perpanjang:", Markup.inlineKeyboard(rows));
+  }
+
+  // Create/trial flow awaiting password
+  if (ctx.session.flow && (ctx.session.flow.type === "create" || ctx.session.flow.type === "trial")) {
+    const { serverCode, days, price, type } = ctx.session.flow;
+    ctx.session.flow = null;
+
+    const pass = text;
+
+    // simple validation
+    if (pass.length < 3 || pass.length > 32 || pass.includes(" ") || pass.includes(",")) {
+      return ctx.reply("❌ Password tidak valid. (3-32 char, tanpa spasi/koma)", mainKb(ctx));
+    }
+
+    // cek unik (DB + config)
+    const existsDb = activeAccounts().some(a => a.password === pass);
+    const existsSys = await passCheck(pass);
+    if (existsDb || existsSys) return ctx.reply("❌ Password sudah dipakai. Gunakan yang lain.", mainKb(ctx));
+
+    const s = getServer(serverCode);
+    if (!s) return ctx.reply("Server tidak ditemukan.", mainKb(ctx));
+
+    // paid: potong saldo
+    if (MODE === "paid" && type !== "trial") {
+      const ok = subBalance(ctx.from.id, Number(price));
+      if (!ok) return ctx.reply("❌ Saldo kurang.", mainKb(ctx));
+    }
+
+    // add password to zivpn
+    try {
+      await passAdd(pass);
+    } catch (e) {
+      // refund kalau paid
+      if (MODE === "paid" && type !== "trial") addBalance(ctx.from.id, Number(price));
+      return ctx.reply(`❌ Gagal membuat akun: ${e.message}`, mainKb(ctx));
+    }
+
+    // store account
+    const all = getAcc();
+    const exp = addDaysISO(days);
+
+    all.push({
+      id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      userId: String(ctx.from.id),
+      serverCode,
+      host: s.host,
+      password: pass,
+      createdAt: nowISO(),
+      expiredAt: exp,
+      status: "active"
+    });
+    setAcc(all);
+
+    // trial mark
+    if (type === "trial") {
+      const users = getUsers();
+      const u = users.find(x => x.userId === String(ctx.from.id));
+      if (u) { u.trialUsed = true; setUsers(users); }
+    }
+
+    return ctx.reply(
+      `✅ Akun Berhasil Dibuat\n\nDomain : ${s.host}\nPassword : ${pass}\nExpired : ${new Date(exp).toLocaleString("id-ID")}`,
+      mainKb(ctx)
+    );
+  }
+
+  // Topup flow
+  if (ctx.session.topup && MODE === "paid") {
+    ctx.session.topup = false;
+    const amount = Number(text.replace(/[^\d]/g, ""));
+    if (!amount || amount < TOPUP_MIN) return ctx.reply(`❌ Minimal topup ${formatRupiah(TOPUP_MIN)}`, mainKb(ctx));
+
+    if (!PAKASIR_PROJECT || !PAKASIR_API_KEY) {
+      return ctx.reply("❌ Pakasir belum diset. Isi PAKASIR_PROJECT & PAKASIR_API_KEY di env.", mainKb(ctx));
+    }
+
+    const orderId = `TOPUP-${ctx.from.id}-${Date.now()}`;
+
+    // Pakasir Transaction Create QRIS (official)
+    // POST https://app.pakasir.com/api/transactioncreate/qris body: project, order_id, amount, api_key :contentReference[oaicite:1]{index=1}
+    let res;
+    try {
+      res = await fetch("https://app.pakasir.com/api/transactioncreate/qris", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          project: PAKASIR_PROJECT,
+          order_id: orderId,
+          amount: amount,
+          api_key: PAKASIR_API_KEY
+        })
+      });
+    } catch (e) {
+      return ctx.reply("❌ Gagal konek ke Pakasir (network). Coba lagi.", mainKb(ctx));
+    }
+
+    if (!res.ok) {
+      const t = await res.text().catch(()=> "");
+      return ctx.reply(`❌ Pakasir error: HTTP ${res.status}\n${t.slice(0,300)}`, mainKb(ctx));
+    }
+
+    const data = await res.json().catch(()=> null);
+    const pay = data?.payment;
+    if (!pay?.payment_number) return ctx.reply("❌ Respon Pakasir tidak valid.", mainKb(ctx));
+
+    const qrString = pay.payment_number;
+    const expAt = pay.expired_at || null;
+    const totalPay = pay.total_payment || amount;
+
+    // generate QR image
+    const png = await QRCode.toBuffer(qrString, { type: "png", width: 420 });
+
+    // store invoice
+    const inv = getInv();
+    inv.push({
+      orderId,
+      userId: String(ctx.from.id),
+      project: PAKASIR_PROJECT,
+      amount,
+      totalPay,
+      status: "pending",
+      createdAt: nowISO()
+    });
+    setInv(inv);
+
+    return ctx.replyWithPhoto(
+      { source: png },
+      {
+        caption:
+          `✅ TopUp Dibuat\nOrder: ${orderId}\nNominal: ${formatRupiah(amount)}\nTotal Bayar: ${formatRupiah(totalPay)}\n` +
+          (expAt ? `Expired: ${expAt}\n` : "") +
+          `\nSilakan scan QRIS.\n\nJika sudah bayar, saldo masuk otomatis.`
+      }
+    );
+  }
+});
+
+// Renew callback
+bot.action(/^renew:([^:]+):(\d+)$/i, async (ctx) => {
+  await ctx.answerCbQuery();
+  const pass = ctx.match[1];
+  const days = Number(ctx.match[2]);
+
+  const all = getAcc();
+  const a = all.find(x => x.password === pass && x.status === "active" && !isExpired(x));
+  if (!a) return ctx.reply("❌ Akun tidak ditemukan / sudah expired.", mainKb(ctx));
+
+  const s = getServer(a.serverCode);
+  if (!s) return ctx.reply("Server config tidak ditemukan.", mainKb(ctx));
+
+  const price = (MODE === "paid") ? Number(s.prices?.[String(days)] || 0) : 0;
+  if (MODE === "paid") {
+    const ok = subBalance(ctx.from.id, price);
+    if (!ok) return ctx.reply("❌ Saldo kurang untuk perpanjang.", mainKb(ctx));
+  }
+
+  const cur = new Date(a.expiredAt);
+  cur.setDate(cur.getDate() + days);
+  a.expiredAt = cur.toISOString();
+  setAcc(all);
 
   return ctx.reply(
-`💰 TopUp Saldo
-Minimal: Rp 10.000
-
-Pilih nominal:`,
-    Markup.inlineKeyboard([
-      [Markup.button.callback("10.000", "TOPUP:10000"), Markup.button.callback("20.000", "TOPUP:20000")],
-      [Markup.button.callback("50.000", "TOPUP:50000"), Markup.button.callback("100.000", "TOPUP:100000")],
-      [Markup.button.callback("✍️ Input Nominal", "TOPUP_INPUT")],
-      [Markup.button.callback("🏠 Menu Utama", "BACK_MENU")]
-    ])
+    `✅ Perpanjang Berhasil\n\nDomain : ${a.host}\nPassword : ${a.password}\nExpired : ${new Date(a.expiredAt).toLocaleString("id-ID")}`,
+    mainKb(ctx)
   );
 });
 
-bot.on("callback_query", async (ctx, next) => {
-  const data = ctx.callbackQuery.data || "";
-  const tgId = ctx.from.id;
+// ===== Auto-expire job (hapus password kalau expired) =====
+setInterval(async () => {
+  const all = getAcc();
+  let changed = false;
 
-  if (data === "TOPUP_INPUT") {
-    if (!IS_PAID) return;
-    state.set(tgId, { mode: "TOPUP_AMOUNT" });
-    await ctx.answerCbQuery();
-    return ctx.reply("Ketik nominal topup (minimal 10000). Contoh: 15000", Markup.keyboard([["🏠 Menu Utama"]]).resize());
-  }
-  if (data === "ADM:PANEL") {
-    if (!isAdmin(tgId)) { await ctx.answerCbQuery("No access", { show_alert:true }); return; }
-    await ctx.answerCbQuery();
-    return ctx.reply("⚙️ Admin Panel", Markup.inlineKeyboard([
-      [Markup.button.callback("📊 Statistik", "ADM:STATS")],
-      [Markup.button.callback("🏠 Menu Utama", "BACK_MENU")]
-    ]));
-  }
-  return next();
-});
+  for (const a of all) {
+    if (!a || a.status !== "active") continue;
+    if (!isExpired(a)) continue;
 
-bot.hears("⚙️ Admin Panel", async (ctx) => {
-  if (!isAdmin(ctx.from.id)) return;
-  return ctx.reply("⚙️ Admin Panel", Markup.inlineKeyboard([
-    [Markup.button.callback("📊 Statistik", "ADM:STATS")],
-    [Markup.button.callback("🏠 Menu Utama", "BACK_MENU")]
-  ]));
-});
+    a.status = "deleted";
+    a.deletedAt = nowISO();
+    a.deletedReason = "expired";
+    changed = true;
 
-// Trial
-bot.hears("⏳ Trial Akun", async (ctx) => {
-  if (!IS_PAID) return ctx.reply("Trial hanya tersedia di MODE=paid.", mainKb(ctx));
-  upsertUser(ctx.from.id);
-
-  if (!TRIAL_ENABLED) return ctx.reply("Trial sedang off.", mainKb(ctx));
-  if (TRIAL_ONCE_PER_USER && trialUsed(ctx.from.id)) return ctx.reply("Anda sudah pernah trial.", mainKb(ctx));
-  if (trialDailyCount() >= TRIAL_MAX_DAILY) return ctx.reply("Kuota trial hari ini habis.", mainKb(ctx));
-
-  // trial pakai server pertama (atau bapak bisa bikin server khusus trial)
-  const s = loadServers()[0];
-  if (!s) return ctx.reply("Server belum dikonfigurasi.", mainKb(ctx));
-
-  const used = activeCountByServer(s.code);
-  if (used >= s.capacity) return ctx.reply("Server penuh, trial tidak tersedia.", mainKb(ctx));
-
-  state.set(ctx.from.id, { mode: "TRIAL_PASSWORD", server_code: s.code });
-
-  if (TRIAL_PASSWORD_MODE === "manual") {
-    return ctx.reply(
-`🔑 Masukkan password trial
-Aturan: 3-32, tanpa spasi/koma, unik
-Durasi: ${TRIAL_DAYS} hari`,
-      Markup.keyboard([["🏠 Menu Utama"]]).resize()
-    );
+    await passDel(a.password);
   }
 
-  // auto
-  let password = genTrialPassword();
-  for (let i=0;i<10;i++) {
-    const dup = db.prepare(`SELECT 1 FROM accounts WHERE password=? AND status='active' LIMIT 1`).get(password);
-    if (!dup) break;
-    password = genTrialPassword();
+  if (changed) setAcc(all);
+}, 60 * 1000);
+
+// ===== Webhook server (Pakasir) =====
+const app = express();
+app.use(express.json({ limit: "1mb" }));
+
+app.post(WEBHOOK_PATH, async (req, res) => {
+  // token guard
+  if (WEBHOOK_TOKEN) {
+    const t = String(req.query.token || "");
+    if (t !== WEBHOOK_TOKEN) return res.status(401).json({ ok: false, error: "bad_token" });
   }
+
+  const body = req.body || {};
+
+  // Pakasir webhook payload: amount, order_id, project, status, payment_method, completed_at :contentReference[oaicite:2]{index=2}
+  const orderId = String(body.order_id || "");
+  const amount = Number(body.amount || 0);
+  const project = String(body.project || "");
+  const status = String(body.status || "");
+
+  if (!orderId || !amount || !project) return res.status(400).json({ ok: false, error: "bad_payload" });
+
+  // verify with transactiondetail (recommended by Pakasir) :contentReference[oaicite:3]{index=3}
+  if (!PAKASIR_API_KEY) return res.status(500).json({ ok: false, error: "api_key_missing" });
 
   try {
-    await zivpnAddPassword(password);
-    const expired = addDaysIsoFrom(nowIso(), TRIAL_DAYS);
+    const url =
+      `https://app.pakasir.com/api/transactiondetail?project=${encodeURIComponent(project)}` +
+      `&amount=${encodeURIComponent(amount)}` +
+      `&order_id=${encodeURIComponent(orderId)}` +
+      `&api_key=${encodeURIComponent(PAKASIR_API_KEY)}`;
 
-    db.prepare(`
-      INSERT INTO accounts(tg_id,server_code,host,password,is_trial,expired_at,status)
-      VALUES(?,?,?,?,1,?,'active')
-    `).run(ctx.from.id, s.code, s.host, password, expired);
+    const r = await fetch(url);
+    const j = await r.json().catch(()=> null);
+    const tStatus = j?.transaction?.status;
 
-    markTrialUsed(ctx.from.id);
-    state.delete(ctx.from.id);
+    if (tStatus !== "completed") return res.json({ ok: true, ignored: true, status: tStatus });
 
-    return ctx.reply(
-      `✅ Trial Berhasil Dibuat\n\nDomain   : ${s.host}\nPassword : ${password}\nExpired  : ${fmtWIB(expired)}`,
-      mainKb(ctx)
-    );
+    // mark invoice + credit balance
+    const inv = getInv();
+    const i = inv.find(x => x.orderId === orderId && x.status === "pending");
+    if (!i) return res.json({ ok: true, note: "invoice_not_found_or_already_done" });
+
+    i.status = "paid";
+    i.paidAt = nowISO();
+
+    setInv(inv);
+
+    // credit "amount" to balance
+    addBalance(i.userId, i.amount);
+
+    return res.json({ ok: true });
   } catch (e) {
-    state.delete(ctx.from.id);
-    return ctx.reply(`Gagal trial: ${(e.message||"").toString()}`, mainKb(ctx));
+    console.error("webhook error:", e.message);
+    return res.status(500).json({ ok: false, error: "server_error" });
   }
 });
 
-// Akun saya
-bot.hears("📌 Akun Saya", async (ctx) => {
-  upsertUser(ctx.from.id);
-
-  const rows = db.prepare(`
-    SELECT host,password,expired_at,status,is_trial
-    FROM accounts
-    WHERE tg_id=?
-    ORDER BY id DESC
-    LIMIT 10
-  `).all(ctx.from.id);
-
-  if (!rows.length) return ctx.reply("Belum ada akun.", mainKb(ctx));
-
-  let msg = "📌 Akun Anda (10 terakhir)\n\n";
-  for (const r of rows) {
-    msg +=
-`Domain   : ${r.host}
-Password : ${r.password}
-Expired  : ${fmtWIB(r.expired_at)}
-Status   : ${r.status}${r.is_trial ? " (TRIAL)" : ""}
-
-`;
-  }
-  return ctx.reply(msg.trim(), mainKb(ctx));
+app.listen(PORT, "127.0.0.1", () => {
+  console.log(`Webhook listening on 127.0.0.1:${PORT}${WEBHOOK_PATH}`);
 });
 
-// Perpanjang (sederhana: user ketik password yang mau diperpanjang)
-bot.hears("♻️ Perpanjang Akun", async (ctx) => {
-  if (!IS_PAID) return ctx.reply("Perpanjang hanya tersedia di MODE=paid.", mainKb(ctx));
-  upsertUser(ctx.from.id);
-  state.set(ctx.from.id, { mode: "RENEW_PASSWORD" });
-  return ctx.reply("Ketik password akun yang mau diperpanjang:", Markup.keyboard([["🏠 Menu Utama"]]).resize());
+// ===== Launch bot =====
+bot.launch({ dropPendingUpdates: true }).then(() => {
+  console.log("Bot started");
 });
-
-// Text handler (password / topup input / renew)
-bot.on("text", async (ctx, next) => {
-  const tgId = ctx.from.id;
-  const st = state.get(tgId);
-  if (!st) return next();
-
-  const input = (ctx.message.text || "").trim();
-
-  // Topup input manual
-  if (IS_PAID && st.mode === "TOPUP_AMOUNT") {
-    const amount = Number(input.replace(/[^\d]/g, ""));
-    if (!Number.isFinite(amount) || amount < 10000) return ctx.reply("Minimal 10000. Contoh: 15000");
-
-    const orderId = `TOPUP-${tgId}-${Date.now()}`;
-    db.prepare(`INSERT INTO invoices(order_id,tg_id,amount,status) VALUES(?,?,?,'pending')`).run(orderId, tgId, amount);
-
-    try {
-      const apiData = await pakasirCreateQris(orderId, amount);
-      const qrisString = pickQrisString(apiData);
-      const expiredAt = pickExpired(apiData);
-
-      if (!qrisString) {
-        state.delete(tgId);
-        return ctx.reply("Gagal ambil QRIS. Cek konfigurasi Pakasir.", mainKb(ctx));
-      }
-
-      db.prepare(`UPDATE invoices SET qris_string=?, qris_expired_at=? WHERE order_id=?`)
-        .run(qrisString, expiredAt, orderId);
-
-      state.delete(tgId);
-      await sendQris(ctx, orderId, amount, qrisString, expiredAt);
-      return;
-    } catch (e) {
-      state.delete(tgId);
-      return ctx.reply(`Gagal membuat QRIS: ${(e.message||"").toString()}`, mainKb(ctx));
-    }
-  }
-
-  // Trial manual password
-  if (IS_PAID && st.mode === "TRIAL_PASSWORD" && TRIAL_PASSWORD_MODE === "manual") {
-    const s = getServer(st.server_code);
-    if (!s) { state.delete(tgId); return ctx.reply("Server trial tidak ditemukan.", mainKb(ctx)); }
-
-    if (!TRIAL_ENABLED) { state.delete(tgId); return ctx.reply("Trial off.", mainKb(ctx)); }
-    if (TRIAL_ONCE_PER_USER && trialUsed(tgId)) { state.delete(tgId); return ctx.reply("Sudah pernah trial.", mainKb(ctx)); }
-    if (trialDailyCount() >= TRIAL_MAX_DAILY) { state.delete(tgId); return ctx.reply("Kuota trial habis.", mainKb(ctx)); }
-
-    const password = input;
-    if (!validPassword(password)) return ctx.reply("Password tidak valid (3-32, tanpa spasi/koma).");
-
-    const dup = db.prepare(`SELECT 1 FROM accounts WHERE password=? AND status='active' LIMIT 1`).get(password);
-    if (dup) return ctx.reply("Password sudah dipakai. Gunakan yang lain.");
-
-    try {
-      await zivpnAddPassword(password);
-      const expired = addDaysIsoFrom(nowIso(), TRIAL_DAYS);
-
-      db.prepare(`
-        INSERT INTO accounts(tg_id,server_code,host,password,is_trial,expired_at,status)
-        VALUES(?,?,?,?,1,?,'active')
-      `).run(tgId, s.code, s.host, password, expired);
-
-      markTrialUsed(tgId);
-      state.delete(tgId);
-
-      return ctx.reply(`✅ Trial Berhasil Dibuat\n\nDomain   : ${s.host}\nPassword : ${password}\nExpired  : ${fmtWIB(expired)}`, mainKb(ctx));
-    } catch (e) {
-      state.delete(tgId);
-      return ctx.reply(`Gagal trial: ${(e.message||"").toString()}`, mainKb(ctx));
-    }
-  }
-
-  // BUY_PASSWORD create akun
-  if (st.mode === "BUY_PASSWORD") {
-    const password = input;
-    if (!validPassword(password)) return ctx.reply("Password tidak valid (3-32, tanpa spasi/koma).");
-
-    const dup = db.prepare(`SELECT 1 FROM accounts WHERE password=? AND status='active' LIMIT 1`).get(password);
-    if (dup) return ctx.reply("Password sudah dipakai. Gunakan password lain.");
-
-    const s = getServer(st.server_code);
-    if (!s) { state.delete(tgId); return ctx.reply("Server tidak ditemukan. Ulangi dari Buat Akun.", mainKb(ctx)); }
-
-    const used = activeCountByServer(s.code);
-    if (used >= s.capacity) { state.delete(tgId); return ctx.reply("Server penuh. Pilih server lain.", mainKb(ctx)); }
-
-    if (IS_PAID) {
-      const saldo = getSaldo(tgId);
-      if (saldo < st.price) { state.delete(tgId); return ctx.reply("Saldo tidak cukup. Silakan TopUp.", mainKb(ctx)); }
-      if (!debitSaldo(tgId, st.price)) { state.delete(tgId); return ctx.reply("Saldo tidak cukup.", mainKb(ctx)); }
-    }
-
-    try {
-      await zivpnAddPassword(password);
-      const expired = addDaysIsoFrom(nowIso(), st.days);
-
-      db.prepare(`
-        INSERT INTO accounts(tg_id,server_code,host,password,is_trial,expired_at,status)
-        VALUES(?,?,?,?,0,?,'active')
-      `).run(tgId, s.code, s.host, password, expired);
-
-      state.delete(tgId);
-      return ctx.reply(`✅ Akun Berhasil Dibuat\n\nDomain   : ${s.host}\nPassword : ${password}\nExpired  : ${fmtWIB(expired)}`, mainKb(ctx));
-    } catch (e) {
-      if (IS_PAID) addSaldo(tgId, st.price); // refund
-      state.delete(tgId);
-      return ctx.reply(`Gagal membuat akun: ${(e.message||"").toString()}`, mainKb(ctx));
-    }
-  }
-
-  // RENEW
-  if (IS_PAID && st.mode === "RENEW_PASSWORD") {
-    const password = input;
-    const acc = db.prepare(`
-      SELECT id, server_code, host, password, expired_at, status, is_trial
-      FROM accounts
-      WHERE tg_id=? AND password=?
-      ORDER BY id DESC LIMIT 1
-    `).get(tgId, password);
-
-    if (!acc || acc.status !== "active") { state.delete(tgId); return ctx.reply("Akun tidak ditemukan / tidak aktif.", mainKb(ctx)); }
-    if (acc.is_trial) { state.delete(tgId); return ctx.reply("Akun trial tidak bisa diperpanjang.", mainKb(ctx)); }
-
-    // tanya paket
-    state.set(tgId, { mode: "RENEW_DAYS", account_id: acc.id });
-    return ctx.reply(
-`Pilih paket perpanjang:
-Password: ${acc.password}
-Expired : ${fmtWIB(acc.expired_at)}`,
-      Markup.inlineKeyboard([
-        [Markup.button.callback("1 Hari", "RENEW:1"), Markup.button.callback("14 Hari", "RENEW:14"), Markup.button.callback("30 Hari", "RENEW:30")],
-        [Markup.button.callback("🏠 Menu Utama", "BACK_MENU")]
-      ])
-    );
-  }
-
-  return next();
-});
-
-// renew callback
-bot.on("callback_query", async (ctx, next) => {
-  const data = ctx.callbackQuery.data || "";
-  const tgId = ctx.from.id;
-
-  if (!IS_PAID) return next();
-
-  if (data.startsWith("RENEW:")) {
-    const days = Number(data.split(":")[1] || 0);
-    if (![1,14,30].includes(days)) { await ctx.answerCbQuery("Paket tidak valid", { show_alert:true }); return; }
-
-    const st = state.get(tgId);
-    if (!st || st.mode !== "RENEW_DAYS") { await ctx.answerCbQuery("Session habis", { show_alert:true }); return; }
-
-    const acc = db.prepare(`
-      SELECT id, server_code, host, password, expired_at, status, is_trial
-      FROM accounts
-      WHERE id=? AND tg_id=?
-    `).get(st.account_id, tgId);
-
-    if (!acc || acc.status !== "active") { state.delete(tgId); await ctx.answerCbQuery("Akun tidak valid", { show_alert:true }); return; }
-
-    const s = getServer(acc.server_code);
-    if (!s) { state.delete(tgId); await ctx.answerCbQuery("Server tidak ditemukan", { show_alert:true }); return; }
-
-    const price = Number(s.prices[String(days)] || 0);
-    const saldo = getSaldo(tgId);
-    if (saldo < price) { state.delete(tgId); await ctx.answerCbQuery(); return ctx.reply("Saldo tidak cukup. Silakan TopUp.", mainKb(ctx)); }
-    if (!debitSaldo(tgId, price)) { state.delete(tgId); await ctx.answerCbQuery(); return ctx.reply("Saldo tidak cukup.", mainKb(ctx)); }
-
-    const base = new Date(acc.expired_at) > new Date() ? acc.expired_at : nowIso();
-    const newExp = addDaysIsoFrom(base, days);
-    db.prepare(`UPDATE accounts SET expired_at=? WHERE id=?`).run(newExp, acc.id);
-
-    state.delete(tgId);
-    await ctx.answerCbQuery("Berhasil");
-    return ctx.reply(`✅ Perpanjang Berhasil\n\nDomain   : ${acc.host}\nPassword : ${acc.password}\nExpired  : ${fmtWIB(newExp)}`, mainKb(ctx));
-  }
-
-  return next();
-});
-
-// ===== Auto expire: hapus password ketika expired =====
-cron.schedule("*/5 * * * *", async () => {
-  try {
-    const expired = db.prepare(`
-      SELECT id, password FROM accounts
-      WHERE status='active' AND expired_at <= ?
-    `).all(nowIso());
-
-    for (const a of expired) {
-      try { await zivpnDelPassword(a.password); } catch {}
-      db.prepare(`UPDATE accounts SET status='expired' WHERE id=?`).run(a.id);
-    }
-  } catch {}
-});
-
-// ===== Webhook server (PAID only) =====
-if (IS_PAID) {
-  const app = express();
-  app.use(express.json());
-
-  // contoh: POST https://domainanda/pakasir/webhook?token=XXXX
-  app.post(WEBHOOK_PATH, async (req, res) => {
-    try {
-      if (WEBHOOK_TOKEN) {
-        const token = String(req.query.token || "");
-        if (token !== WEBHOOK_TOKEN) return res.status(401).json({ ok:false, reason:"bad_token" });
-      }
-
-      const body = req.body || {};
-      const orderId = String(body.order_id || body.orderId || "").trim();
-      const amount = Number(body.amount || 0);
-      const status = String(body.status || "").toLowerCase();
-
-      if (!orderId || !amount) return res.status(400).json({ ok:false, reason:"bad_payload" });
-
-      // hanya proses completed (jika pakasir kirim status lain -> ignore)
-      if (status !== "completed") return res.json({ ok:true, ignored:true });
-
-      // verifikasi detail biar aman
-      const detail = await pakasirVerifyDetail(orderId, amount);
-      const st = pickStatusFromDetail(detail);
-      if (st !== "completed") return res.status(400).json({ ok:false, reason:"detail_not_completed" });
-
-      const inv = db.prepare(`SELECT * FROM invoices WHERE order_id=?`).get(orderId);
-      if (!inv) return res.json({ ok:true, ignored:true });
-      if (inv.status === "paid") return res.json({ ok:true, already:true });
-
-      db.prepare(`UPDATE invoices SET status='paid', paid_at=datetime('now') WHERE order_id=?`).run(orderId);
-      addSaldo(inv.tg_id, inv.amount);
-
-      try {
-        await bot.telegram.sendMessage(inv.tg_id, `✅ TopUp berhasil\nOrder: ${orderId}\nNominal: ${rupiah(inv.amount)}`);
-      } catch {}
-
-      return res.json({ ok:true });
-    } catch (e) {
-      return res.status(500).json({ ok:false, error: (e.message||"").toString() });
-    }
-  });
-
-  app.listen(PORT, "127.0.0.1", () => {
-    console.log(`Webhook listening on 127.0.0.1:${PORT}${WEBHOOK_PATH}`);
-  });
-}
-
-bot.launch();
-process.once("SIGINT", () => bot.stop("SIGINT"));
-process.once("SIGTERM", () => bot.stop("SIGTERM"));
