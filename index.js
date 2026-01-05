@@ -675,7 +675,7 @@ bot.on("text", async (ctx, next) => {
     "💳 Tambah Saldo User",
     "💰 Cek Saldo User",
   ]);
-
+  
   if (menuTexts.has(text)) {
     return next(); // ⭐ ini kuncinya
   }
