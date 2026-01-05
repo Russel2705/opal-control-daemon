@@ -18,5 +18,15 @@
     "capacity": 20,
     "prices": { "1": 333, "14": 4662, "30": 9990 },
     "enabled": true
+  },
+   {
+    "code": "ID-IP2",
+    "name": "🟦 🇲🇨 ID - IP LIMIT 2",
+    "host": "103.150.226.42",
+    "quota_gb": 100,
+    "ip_limit": 1,
+    "capacity": 20,
+    "prices": { "1": 333, "14": 4662, "30": 9990 },
+    "enabled": true
   }
 ]
