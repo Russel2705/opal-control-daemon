@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-cd /opt/opal-control-daemon
+APP_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+cd "$APP_DIR"
 git pull
 npm install --omit=dev
 systemctl restart opal-daemon
