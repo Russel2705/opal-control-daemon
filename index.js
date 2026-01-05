@@ -66,15 +66,6 @@ function readJsonSafe(p, fallback) {
   }
 }
 
-function escapeHtml(s) {
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
 function writeJson(p, data) {
   ensureDir(path.dirname(p));
   fs.writeFileSync(p, JSON.stringify(data, null, 2));
@@ -99,6 +90,15 @@ function addHoursISO(hours) {
 function formatRupiah(n) {
   const x = Number(n || 0);
   return "Rp" + x.toLocaleString("id-ID");
+}
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function isAdminId(userId) {
