@@ -395,72 +395,42 @@ bot.start(async (ctx) => {
 
   const c = UI.contact || {};
 
-  // helper padding supaya ":" rata
-  const pad = (label, width = 6) => (label + " ".repeat(Math.max(0, width - label.length)));
-
-  // Brand header (ringkas, tidak terlalu panjang biar tidak wrap)
+  // Brand
   const brandTitle = UI.brandTitle || "ZIVPN UDP PREMIUM";
   const brandDesc = UI.brandDesc || ["Bot VPN UDP dengan sistem otomatis", "Akses internet cepat & aman"];
 
-  const bodyLines = [
-    `👋 Hai, ${ctx.from.first_name || "Member"}!`,
-    "",
-    `🆔 ${pad("ID")} : ${uid}`,
-    `💰 ${pad("Saldo")} : ${formatRupiah(saldo)}`,
-    `🧩 ${pad("Mode")} : ${MODE.toUpperCase()}`,
-    "",
-    "📊 Statistik Anda",
-    `• Hari ini   : ${today} akun`,
-    `• Minggu ini : ${week} akun`,
-    `• Bulan ini  : ${month} akun`,
-    "",
-    "🌍 Statistik Global",
-    `• Hari ini   : ${gToday} akun`,
-    `• Minggu ini : ${gWeek} akun`,
-    `• Bulan ini  : ${gMonth} akun`,
-    "",
-    "☎️ Bantuan / Kontak",
-    c.telegram ? `• Telegram : ${c.telegram}` : null,
-    c.whatsapp ? `• WhatsApp : ${c.whatsapp}` : null,
-    c.text ? `• ${c.text}` : null,
-  ].filter(Boolean);
+  // Header box (tanpa <pre>, biar tidak muncul "copy")
+  const border = "────────────────────────────";
+  const header =
+    `┌ ⚡ <b>${escapeHtml(brandTitle)}</b> ⚡\n` +
+    brandDesc.map((x) => `│ ${escapeHtml(x)}`).join("\n") +
+    `\n└${border}`;
 
-  // Box border (buat pendek biar aman di HP)
-  const border = "══════════════════════";
+  const lines = [];
 
-  const msg =
-    `<b>⚡ ${escapeHtml(brandTitle)} ⚡</b>\n` +
-    `<pre>` +
-    `╔${border}╗\n` +
-    brandDesc.map((x) => ` ${x}`).join("\n") +
-    `\n╚${border}╝\n\n` +
-    bodyLines.join("\n") +
-    `</pre>`;
+  lines.push(header);
+  lines.push("");
+  lines.push(`👋 <b>Hai, ${escapeHtml(ctx.from.first_name || "Member")}!</b>`);
+  lines.push(`🆔 <b>ID</b>     : <code>${uid}</code>`);
+  lines.push(`💰 <b>Saldo</b>  : <b>${escapeHtml(formatRupiah(saldo))}</b>`);
+  lines.push(`🧩 <b>Mode</b>   : <b>${escapeHtml(MODE.toUpperCase())}</b>`);
+  lines.push("");
+  lines.push(`📊 <b>Statistik Anda</b>`);
+  lines.push(`• Hari ini   : <b>${today}</b> akun`);
+  lines.push(`• Minggu ini : <b>${week}</b> akun`);
+  lines.push(`• Bulan ini  : <b>${month}</b> akun`);
+  lines.push("");
+  lines.push(`🌍 <b>Statistik Global</b>`);
+  lines.push(`• Hari ini   : <b>${gToday}</b> akun`);
+  lines.push(`• Minggu ini : <b>${gWeek}</b> akun`);
+  lines.push(`• Bulan ini  : <b>${gMonth}</b> akun`);
+  lines.push("");
+  lines.push(`☎️ <b>Bantuan / Kontak</b>`);
+  if (c.telegram) lines.push(`• Telegram : ${escapeHtml(c.telegram)}`);
+  if (c.whatsapp) lines.push(`• WhatsApp : ${escapeHtml(c.whatsapp)}`);
+  if (c.text) lines.push(`• ${escapeHtml(c.text)}`);
 
-  return ctx.reply(msg, { parse_mode: "HTML", ...mainKb(ctx) });
-});
-
-// Escape helper untuk HTML (wajib ada supaya aman kalau ada simbol < >)
-function escapeHtml(str) {
-  return String(str)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
-}
-
-bot.hears("📞 Bantuan", async (ctx) => {
-  const denied = denyIfPrivate(ctx);
-  if (denied) return;
-
-  const c = UI.contact || {};
-  const msgLines = [
-    "☎️ Bantuan / Kontak",
-    c.telegram ? `• Telegram : ${c.telegram}` : null,
-    c.whatsapp ? `• WhatsApp : ${c.whatsapp}` : null,
-    c.text ? `• ${c.text}` : null,
-  ].filter(Boolean);
-
-  const msg = `<pre>${msgLines.join("\n")}</pre>`;
+  const msg = lines.join("\n");
   return ctx.reply(msg, { parse_mode: "HTML", ...mainKb(ctx) });
 });
 
