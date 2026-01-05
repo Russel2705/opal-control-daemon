@@ -66,12 +66,25 @@ function validPassword(p) {
 // ===== Load servers =====
 function loadServers() {
   const p = path.join(__dirname, "config", "servers.json");
-  const raw = JSON.parse(fs.readFileSync(p, "utf8"));
-  return raw.filter(s => s.enabled);
+
+  // ✅ jangan crash kalau file belum ada
+  if (!fs.existsSync(p)) return [];
+
+  try {
+    const raw = JSON.parse(fs.readFileSync(p, "utf8"));
+    if (!Array.isArray(raw)) return [];
+    // enabled default true kalau field enabled tidak ada
+    return raw.filter(s => s && s.enabled !== false);
+  } catch (e) {
+    console.error("servers.json invalid:", e.message);
+    return [];
+  }
 }
+
 function getServer(code) {
   return loadServers().find(s => s.code === code);
 }
+
 
 // ===== ZiVPN integration =====
 function zivpnAddPassword(password) {
