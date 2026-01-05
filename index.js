@@ -394,50 +394,74 @@ bot.start(async (ctx) => {
   const gMonth = countCreated({ from: startOfMonth() });
 
   const c = UI.contact || {};
-  const lines = [
-    `╭━ ${UI.brandTitle} ━╮`,
-    ...(UI.brandDesc || []).map((x) => `┃ ${x}`),
-    "╰━━━━━━━━━━━━━━━━━━╯",
+
+  // helper padding supaya ":" rata
+  const pad = (label, width = 6) => (label + " ".repeat(Math.max(0, width - label.length)));
+
+  // Brand header (ringkas, tidak terlalu panjang biar tidak wrap)
+  const brandTitle = UI.brandTitle || "ZIVPN UDP PREMIUM";
+  const brandDesc = UI.brandDesc || ["Bot VPN UDP dengan sistem otomatis", "Akses internet cepat & aman"];
+
+  const bodyLines = [
+    `👋 Hai, ${ctx.from.first_name || "Member"}!`,
     "",
-    `👋 Hai, ${ctx.from.first_name}!`,
-    `ID: ${uid}`,
-    `Saldo: ${formatRupiah(saldo)}`,
-    `Mode: ${MODE.toUpperCase()}`,
+    `🆔 ${pad("ID")} : ${uid}`,
+    `💰 ${pad("Saldo")} : ${formatRupiah(saldo)}`,
+    `🧩 ${pad("Mode")} : ${MODE.toUpperCase()}`,
     "",
     "📊 Statistik Anda",
-    `• Hari ini : ${today} akun`,
-    `• Minggu ini: ${week} akun`,
-    `• Bulan ini : ${month} akun`,
+    `• Hari ini   : ${today} akun`,
+    `• Minggu ini : ${week} akun`,
+    `• Bulan ini  : ${month} akun`,
     "",
     "🌍 Statistik Global",
-    `• Hari ini : ${gToday} akun`,
-    `• Minggu ini: ${gWeek} akun`,
-    `• Bulan ini : ${gMonth} akun`,
+    `• Hari ini   : ${gToday} akun`,
+    `• Minggu ini : ${gWeek} akun`,
+    `• Bulan ini  : ${gMonth} akun`,
     "",
     "☎️ Bantuan / Kontak",
-    c.telegram ? `• Telegram: ${c.telegram}` : null,
-    c.whatsapp ? `• WhatsApp: ${c.whatsapp}` : null,
+    c.telegram ? `• Telegram : ${c.telegram}` : null,
+    c.whatsapp ? `• WhatsApp : ${c.whatsapp}` : null,
     c.text ? `• ${c.text}` : null,
   ].filter(Boolean);
 
-  return ctx.reply(lines.join("\n"), mainKb(ctx));
+  // Box border (buat pendek biar aman di HP)
+  const border = "══════════════════════";
+
+  const msg =
+    `<b>⚡ ${escapeHtml(brandTitle)} ⚡</b>\n` +
+    `<pre>` +
+    `╔${border}╗\n` +
+    brandDesc.map((x) => ` ${x}`).join("\n") +
+    `\n╚${border}╝\n\n` +
+    bodyLines.join("\n") +
+    `</pre>`;
+
+  return ctx.reply(msg, { parse_mode: "HTML", ...mainKb(ctx) });
 });
+
+// Escape helper untuk HTML (wajib ada supaya aman kalau ada simbol < >)
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
 
 bot.hears("📞 Bantuan", async (ctx) => {
   const denied = denyIfPrivate(ctx);
   if (denied) return;
 
   const c = UI.contact || {};
-  const msg = [
-    "📞 Bantuan / Kontak",
-    c.telegram ? `• Telegram: ${c.telegram}` : null,
-    c.whatsapp ? `• WhatsApp: ${c.whatsapp}` : null,
+  const msgLines = [
+    "☎️ Bantuan / Kontak",
+    c.telegram ? `• Telegram : ${c.telegram}` : null,
+    c.whatsapp ? `• WhatsApp : ${c.whatsapp}` : null,
     c.text ? `• ${c.text}` : null,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].filter(Boolean);
 
-  return ctx.reply(msg, mainKb(ctx));
+  const msg = `<pre>${msgLines.join("\n")}</pre>`;
+  return ctx.reply(msg, { parse_mode: "HTML", ...mainKb(ctx) });
 });
 
 // ===== Create account =====
