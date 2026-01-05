@@ -25,7 +25,7 @@ if [[ ! -f "$CFG" ]]; then
   exit 3
 fi
 
-# pastikan auth.config itu array
+# pastikan auth.config array
 if ! jq -e '.auth.config and (.auth.config|type=="array")' "$CFG" >/dev/null 2>&1; then
   echo "ERR: auth.config not found or not array"
   exit 4
@@ -47,7 +47,7 @@ case "$ACTION" in
     mv "$tmp" "$CFG"
     ;;
   *)
-    echo "Unknown action: $ACTION"
+    echo "Unknown action"
     exit 5
     ;;
 esac
