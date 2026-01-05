@@ -81,7 +81,7 @@ const SERVERS_DEFAULT = [
     code: "ID1",
     name: "🇲🇨 ID 1",
     enabled: true,
-    domain: "id.xstrore1.cloud",
+    domain: "id.xstrore1.dpdns.org",
     quotaGB: 150,
     maxAccounts: 9999, // slot (bisa bapak kecilkan)
     ipLimits: [1, 2],
