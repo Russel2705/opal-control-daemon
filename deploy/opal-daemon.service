@@ -1,14 +1,14 @@
 [Unit]
-Description=Opal Control Daemon (Node.js)
+Description=Opal ZiVPN Bot (Node.js)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/opt/opal-control-daemon
+WorkingDirectory=/opt/opal-zivpn-bot
 EnvironmentFile=/etc/opal-daemon.env
-ExecStart=/usr/bin/node /opt/opal-control-daemon/index.js
+ExecStart=/usr/bin/node /opt/opal-zivpn-bot/index.js
 Restart=always
 RestartSec=3
 
