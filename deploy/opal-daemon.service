@@ -1,0 +1,18 @@
+[Unit]
+Description=Opal Control Daemon (Node.js)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=opal
+WorkingDirectory=/opt/opal-control-daemon
+EnvironmentFile=/etc/opal-daemon.env
+ExecStart=/usr/bin/node /opt/opal-control-daemon/index.js
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
