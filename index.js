@@ -66,6 +66,15 @@ function readJsonSafe(p, fallback) {
   }
 }
 
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function writeJson(p, data) {
   ensureDir(path.dirname(p));
   fs.writeFileSync(p, JSON.stringify(data, null, 2));
@@ -395,55 +404,46 @@ bot.start(async (ctx) => {
 
   const c = UI.contact || {};
 
-  // Brand
+  // Brand header
   const brandTitle = UI.brandTitle || "ZIVPN UDP PREMIUM";
-  const brandDesc = UI.brandDesc || ["Bot VPN UDP dengan sistem otomatis", "Akses internet cepat & aman"];
+  const brandDesc = UI.brandDesc || [
+    "Bot VPN UDP Premium dengan sistem otomatis",
+    "Akses internet cepat & aman",
+  ];
 
-  // Header box (tanpa <pre>, biar tidak muncul "copy")
-  const border = "────────────────────────────";
+  // Header box (tanpa <pre> supaya tidak ada "copy")
+  const headerBorder = "────────────────────────────";
   const header =
     `┌ ⚡ <b>${escapeHtml(brandTitle)}</b> ⚡\n` +
     brandDesc.map((x) => `│ ${escapeHtml(x)}`).join("\n") +
-    `\n└${border}`;
+    `\n└${headerBorder}`;
 
-  const lines = [];
+  // Body
+  const name = ctx.from.first_name || "Member";
 
-  lines.push(header);
-  lines.push("");
-  lines.push(`👋 <b>Hai, ${escapeHtml(ctx.from.first_name || "Member")}!</b>`);
-  lines.push(`🆔 <b>ID</b>     : <code>${uid}</code>`);
-  lines.push(`💰 <b>Saldo</b>  : <b>${escapeHtml(formatRupiah(saldo))}</b>`);
-  lines.push(`🧩 <b>Mode</b>   : <b>${escapeHtml(MODE.toUpperCase())}</b>`);
-  lines.push("");
-  lines.push(`📊 <b>Statistik Anda</b>`);
-  lines.push(`• Hari ini   : <b>${today}</b> akun`);
-  lines.push(`• Minggu ini : <b>${week}</b> akun`);
-  lines.push(`• Bulan ini  : <b>${month}</b> akun`);
-  lines.push("");
-  lines.push(`🌍 <b>Statistik Global</b>`);
-  lines.push(`• Hari ini   : <b>${gToday}</b> akun`);
-  lines.push(`• Minggu ini : <b>${gWeek}</b> akun`);
-  lines.push(`• Bulan ini  : <b>${gMonth}</b> akun`);
-  lines.push("");
-  lines.push(`☎️ <b>Bantuan / Kontak</b>`);
-  if (c.telegram) lines.push(`• Telegram : ${escapeHtml(c.telegram)}`);
-  if (c.whatsapp) lines.push(`• WhatsApp : ${escapeHtml(c.whatsapp)}`);
-  if (c.text) lines.push(`• ${escapeHtml(c.text)}`);
+  let msg = "";
+  msg += header + "\n\n";
+  msg += `👋 <b>Hai, ${escapeHtml(name)}!</b>\n\n`;
+  msg += `🆔 <b>ID</b>     : <code>${uid}</code>\n`;
+  msg += `💰 <b>Saldo</b>  : <b>${escapeHtml(formatRupiah(saldo))}</b>\n`;
+  msg += `🧩 <b>Mode</b>   : <b>${escapeHtml(MODE.toUpperCase())}</b>\n\n`;
 
-  const msg = lines.join("\n");
+  msg += `📊 <b>Statistik Anda</b>\n`;
+  msg += `• Hari ini   : <b>${today}</b> akun\n`;
+  msg += `• Minggu ini : <b>${week}</b> akun\n`;
+  msg += `• Bulan ini  : <b>${month}</b> akun\n\n`;
+
+  msg += `🌍 <b>Statistik Global</b>\n`;
+  msg += `• Hari ini   : <b>${gToday}</b> akun\n`;
+  msg += `• Minggu ini : <b>${gWeek}</b> akun\n`;
+  msg += `• Bulan ini  : <b>${gMonth}</b> akun\n\n`;
+
+  msg += `☎️ <b>Bantuan / Kontak</b>\n`;
+  if (c.telegram) msg += `• Telegram : ${escapeHtml(c.telegram)}\n`;
+  if (c.whatsapp) msg += `• WhatsApp : ${escapeHtml(c.whatsapp)}\n`;
+  if (c.text) msg += `• ${escapeHtml(c.text)}\n`;
+
   return ctx.reply(msg, { parse_mode: "HTML", ...mainKb(ctx) });
-});
-
-// ===== Create account =====
-bot.hears("➕ Buat Akun", async (ctx) => {
-  const denied = denyIfPrivate(ctx);
-  if (denied) return;
-
-  const sv = loadServers();
-  if (!sv.length) return ctx.reply("❌ Config server belum ada. Isi: config/servers.json", mainKb(ctx));
-
-  const text = sv.map(serverCard).join("\n\n");
-  return ctx.reply(text, serversInline("buy"));
 });
 
 // ===== Trial (fixed 3 hours) =====
