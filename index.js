@@ -435,7 +435,7 @@ bot.start(async (ctx) => {
   c.telegram ? `• Telegram  : ${c.telegram}` : null,
   c.whatsapp ? `• WhatsApp  : ${c.whatsapp}` : null,
   c.text ? `• Catatan   : ${c.text}` : null,
-].filter(Boolean);
+].filter((x) => x !== null && x !== undefined);
 
   return ctx.reply(lines.join("\n"), mainKb(ctx));
 });
