@@ -1,7 +1,7 @@
 [
   {
     "code": "ID-IP1",
-    "name": "ID-IP1 (1 IP)",
+    "name": "🟦 🇲🇨 ID - IP LIMIT 1",
     "host": "id.xstore1.dpdns.org",
     "quota_gb": 100,
     "ip_limit": 1,
@@ -11,7 +11,7 @@
   },
   {
     "code": "ID-IP2",
-    "name": "ID-IP2 (2 IP)",
+    "name": "🟦 🇲🇨 ID - IP LIMIT 2",
     "host": "id.xstore1.dpdns.org",
     "quota_gb": 100,
     "ip_limit": 2,
