@@ -35,7 +35,7 @@ const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || "";
 const PORT = Number(process.env.PORT || 9000);
 const WEBHOOK_PATH = process.env.WEBHOOK_PATH || "/pakasir/webhook";
 
-const TOPUP_MIN = Number(process.env.TOPUP_MIN || 5000);
+const TOPUP_MIN = Number(process.env.TOPUP_MIN || 10000);
 
 // FREE access control
 const FREE_ACCESS = (process.env.FREE_ACCESS || "public").toLowerCase(); // public|private
@@ -603,7 +603,7 @@ bot.hears(/top\s*up|topup/i, async (ctx) => {
   if (MODE !== "paid") return ctx.reply("Fitur topup hanya untuk mode PAID.", mainKb(ctx));
 
   ctx.session.topup = true;
-  return ctx.reply(`Masukkan nominal topup (min ${formatRupiah(TOPUP_MIN)}). Contoh: 5000`, mainKb(ctx));
+  return ctx.reply(`Masukkan nominal topup (min ${formatRupiah(TOPUP_MIN)}). Contoh: 10000`, mainKb(ctx));
 });
 
 // ===== Admin Panel =====
