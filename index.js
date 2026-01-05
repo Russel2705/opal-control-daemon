@@ -337,6 +337,12 @@ Jika ada kendala, hubungi admin.`,
 // Buat akun → list server
 bot.hears("➕ Buat Akun", async (ctx) => {
   upsertUser(ctx.from.id);
+
+  const servers = loadServers();
+  if (!servers.length) {
+    return ctx.reply("❌ Config server belum ada / belum diisi.\n\nBuat file: config/servers.json", mainKb(ctx));
+  }
+
   return ctx.reply(formatServerList(), serverButtons());
 });
 
