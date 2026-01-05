@@ -10,7 +10,7 @@ Fitur:
 - ON 24 jam via systemd (opal-daemon)
 
 Install:
-sudo bash -c 'set -e; apt update -y; apt install -y git; rm -rf /opt/opal-control-daemon; git clone https://github.com/USERNAME/opal-control-daemon.git /opt/opal-control-daemon; bash /opt/opal-control-daemon/install.sh'
+sudo bash -c 'set -e; apt update -y; apt install -y git; rm -rf /opt/opal-control-daemon; git clone https://github.com/Russel2705/opal-control-daemon.git /opt/opal-control-daemon; bash /opt/opal-control-daemon/install.sh'
 
 Cek:
 systemctl status opal-daemon
