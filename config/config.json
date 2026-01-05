@@ -1,5 +1,3 @@
-sudo mkdir -p /opt/opal-control-daemon/config
-sudo tee /opt/opal-control-daemon/config/servers.json >/dev/null <<'JSON'
 [
   {
     "code": "ID-IP1",
@@ -22,4 +20,3 @@ sudo tee /opt/opal-control-daemon/config/servers.json >/dev/null <<'JSON'
     "enabled": true
   }
 ]
-JSON
