@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=opal
+User=root
 WorkingDirectory=/opt/opal-control-daemon
 EnvironmentFile=/etc/opal-daemon.env
 ExecStart=/usr/bin/node /opt/opal-control-daemon/index.js
