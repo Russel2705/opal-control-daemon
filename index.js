@@ -186,7 +186,7 @@ function serverCardText() {
 // ===== ZiVPN core integration =====
 function zivpnAddPassword(password) {
   return new Promise((resolve, reject) => {
-    execFile("sudo", ["/usr/local/bin/zivpn-passwd-manager", "add", password], (err, stdout, stderr) => {
+    execFile("/usr/local/bin/zivpn-passwd-manager", "add", password], (err, stdout, stderr) => {
       if (err) return reject(new Error((stderr || stdout || err.message || "").toString()));
       resolve(stdout.trim());
     });
@@ -194,7 +194,7 @@ function zivpnAddPassword(password) {
 }
 function zivpnDelPassword(password) {
   return new Promise((resolve, reject) => {
-    execFile("sudo", ["/usr/local/bin/zivpn-passwd-manager", "del", password], (err, stdout, stderr) => {
+    execFile("/usr/local/bin/zivpn-passwd-manager", "del", password], (err, stdout, stderr) => {
       if (err) return reject(new Error((stderr || stdout || err.message || "").toString()));
       resolve(stdout.trim());
     });
