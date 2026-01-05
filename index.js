@@ -454,7 +454,9 @@ bot.hears("📌 Akun Saya", async (ctx) => {
 });
 
 // ===== TopUp (PAID) =====
-bot.hears("💰 TopUp Saldo", async (ctx) => {
+bot.hears(/top\s*up|topup/i, async (ctx) => {
+  if (!ctx.session) ctx.session = {};        // ✅ FIX UTAMA
+
   const denied = denyIfPrivate(ctx); if (denied) return;
   if (MODE !== "paid") return ctx.reply("Fitur topup hanya untuk mode PAID.", mainKb(ctx));
 
