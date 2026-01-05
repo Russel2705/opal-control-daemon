@@ -1,6 +1,6 @@
 {
-  "name": "opal-control-daemon",
-  "version": "1.2.0",
+  "name": "opal-zivpn-bot",
+  "version": "1.0.0",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
@@ -11,6 +11,7 @@
     "better-sqlite3": "^11.5.0",
     "express": "^4.21.2",
     "node-cron": "^3.0.3",
+    "qrcode": "^1.5.4",
     "telegraf": "^4.16.3"
   }
 }
