@@ -1,1 +1,22 @@
-
+[
+  {
+    "code": "ID-IP1",
+    "name": "ID-IP1 (1 IP)",
+    "host": "id.xstore1.dpdns.org",
+    "quota_gb": 100,
+    "ip_limit": 1,
+    "capacity": 20,
+    "prices": { "1": 166, "14": 2324, "30": 4980 },
+    "enabled": true
+  },
+  {
+    "code": "ID-IP2",
+    "name": "ID-IP2 (2 IP)",
+    "host": "id.xstore1.dpdns.org",
+    "quota_gb": 100,
+    "ip_limit": 2,
+    "capacity": 20,
+    "prices": { "1": 333, "14": 4662, "30": 9990 },
+    "enabled": true
+  }
+]
