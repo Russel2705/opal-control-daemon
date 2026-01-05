@@ -341,6 +341,7 @@ function adminKb() {
   return Markup.keyboard([
     ["📋 List Akun Aktif", "🔎 Cari Akun"],
     ["🗑️ Delete Akun", "💳 Tambah Saldo User"],
+    ["💰 Cek Saldo User"],
     ["⬅️ Kembali"],
   ]).resize();
 }
@@ -649,6 +650,12 @@ bot.hears("💳 Tambah Saldo User", async (ctx) => {
   return ctx.reply("Format: <user_id> <nominal>\nContoh: 5688411076 20000", adminKb());
 });
 
+bot.hears("💰 Cek Saldo User", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+  ctx.session.checkSaldo = true;
+  return ctx.reply("Kirim user_id untuk cek saldo.\nContoh: 5688411076", adminKb());
+});
+
 // ===== Text handler for flows =====
 bot.on("text", async (ctx) => {
   const denied = denyIfPrivate(ctx);
@@ -716,6 +723,28 @@ bot.on("text", async (ctx) => {
     addBalance(uid, amt);
     return ctx.reply(`✅ Saldo user ${uid} ditambah ${formatRupiah(amt)}`, adminKb());
   }
+
+  // Admin: check saldo user
+if (ctx.session.checkSaldo && isAdminId(ctx.from.id)) {
+  ctx.session.checkSaldo = false;
+
+  const uid = text.trim();
+  if (!/^\d+$/.test(uid)) {
+    return ctx.reply("user_id harus angka.\nContoh: 5688411076", adminKb());
+  }
+
+  const users = getUsers();
+  const u = users.find((x) => String(x.userId) === String(uid));
+
+  const saldo = u ? Number(u.balance || 0) : 0;
+  const trialUsed = u ? (u.trialUsed ? "Ya" : "Belum") : "-";
+  const createdAt = u?.createdAt ? new Date(u.createdAt).toLocaleString("id-ID") : "-";
+
+  return ctx.reply(
+    `💰 Saldo User\nUserID: ${uid}\nSaldo: ${formatRupiah(saldo)}\nTrial digunakan: ${trialUsed}\nTerdaftar: ${createdAt}`,
+    adminKb()
+  );
+}
 
   // Renew flow: user sends password
   if (ctx.session.renew) {
