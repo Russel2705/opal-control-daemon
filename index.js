@@ -670,22 +670,41 @@ bot.on("text", async (ctx) => {
 
   // Admin: delete account
   if (ctx.session.delPass && isAdminId(ctx.from.id)) {
-    ctx.session.delPass = false;
-    const pass = text;
+  ctx.session.delPass = false;
 
-    const all = getAcc();
-    const idx = all.findIndex((a) => a.password === pass && a.status === "active");
-    if (idx === -1) return ctx.reply("Akun tidak ditemukan / sudah dihapus.", adminKb());
-
-    all[idx].status = "deleted";
-    all[idx].deletedAt = nowISO();
-    all[idx].deletedReason = "admin";
-    setAcc(all);
-
-    await passDel(pass);
-    return ctx.reply("✅ Akun sudah dihapus.", adminKb());
+  const parts = text.split(/\s+/);
+  if (parts.length < 2) {
+    return ctx.reply("Format salah.\nGunakan: <user_id> <password>\nContoh: 5688411076 eko12345", adminKb());
   }
 
+  const targetUserId = parts[0];
+  const pass = parts.slice(1).join(" "); // kalau password ada spasi (walau kita larang), ini tetap aman
+
+  if (!/^\d+$/.test(targetUserId)) {
+    return ctx.reply("user_id harus angka.\nContoh: 5688411076 eko12345", adminKb());
+  }
+
+  const all = getAcc();
+  const idx = all.findIndex(
+    (a) => a.status === "active" && String(a.userId) === String(targetUserId) && a.password === pass
+  );
+
+  if (idx === -1) {
+    return ctx.reply("Akun tidak ditemukan (pastikan user_id & password benar) atau sudah dihapus/expired.", adminKb());
+  }
+
+  // mark deleted
+  all[idx].status = "deleted";
+  all[idx].deletedAt = nowISO();
+  all[idx].deletedReason = "admin";
+  setAcc(all);
+
+  // remove password from zivpn
+  await passDel(pass);
+
+  return ctx.reply(`✅ Akun user ${targetUserId} dengan password ${pass} sudah dihapus.`, adminKb());
+}
+  
   // Admin: add saldo
   if (ctx.session.addSaldo && isAdminId(ctx.from.id)) {
     ctx.session.addSaldo = false;
