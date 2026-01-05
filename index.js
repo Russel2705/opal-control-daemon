@@ -651,12 +651,34 @@ bot.hears("💰 Cek Saldo User", async (ctx) => {
 });
 
 // ===== Text handler for flows =====
-bot.on("text", async (ctx) => {
+bot.on("text", async (ctx, next) => {
   const denied = denyIfPrivate(ctx);
   if (denied) return;
 
   const text = String(ctx.message.text || "").trim();
   upsertUser(ctx.from.id, ctx.from.first_name);
+
+  // ✅ Jangan handle tombol menu di sini.
+  // Biarkan bot.hears("➕ Buat Akun") dan bot.hears("⏳ Trial Akun") yang menangani.
+  const menuTexts = new Set([
+    "➕ Buat Akun",
+    "⏳ Trial Akun",
+    "♻️ Perpanjang Akun",
+    "📌 Akun Saya",
+    "📞 Bantuan",
+    "⚙️ Admin Panel",
+    "💰 TopUp Saldo",
+    "⬅️ Kembali",
+    "📋 List Akun Aktif",
+    "🔎 Cari Akun",
+    "🗑️ Delete Akun",
+    "💳 Tambah Saldo User",
+    "💰 Cek Saldo User",
+  ]);
+
+  if (menuTexts.has(text)) {
+    return next(); // ⭐ ini kuncinya
+  }
 
   // Admin: find account
   if (ctx.session.findPass && isAdminId(ctx.from.id)) {
