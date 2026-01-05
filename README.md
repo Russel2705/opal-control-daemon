@@ -1,4 +1,4 @@
-# Opal ZiVPN Bot (Auto 24 Jam)
+# Opal Control Daemon — ZiVPN Bot (Auto 24 Jam)
 
 Bot Telegram untuk jual/buat akun ZiVPN otomatis:
 - Pilih server (IP limit 1/2) + status penuh/tersedia
@@ -11,7 +11,7 @@ Bot Telegram untuk jual/buat akun ZiVPN otomatis:
 
 ## ✅ 1x Klik Install (1 Perintah)
 
-Login VPS sebagai root lalu jalankan **satu baris** ini:
+Login VPS sebagai **root**, lalu jalankan **1 baris** ini:
 
 ```bash
-bash -c 'set -e; apt update -y; apt install -y git; rm -rf /opt/opal-zivpn-bot; git clone https://github.com/USERNAME/REPO.git /opt/opal-zivpn-bot; bash /opt/opal-zivpn-bot/install.sh'
+bash -c 'set -e; apt update -y; apt install -y git; rm -rf /opt/opal-control-daemon; git clone --depth 1 https://github.com/Russel2705/opal-control-daemon.git /opt/opal-control-daemon; bash /opt/opal-control-daemon/install.sh'
