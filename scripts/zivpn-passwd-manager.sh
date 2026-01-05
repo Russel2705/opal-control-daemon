@@ -20,10 +20,15 @@ fi
 exec 9>/var/lock/zivpn-passwd.lock
 flock -x 9
 
+if [[ ! -f "$CFG" ]]; then
+  echo "ERR: $CFG not found"
+  exit 3
+fi
+
 # pastikan auth.config itu array
 if ! jq -e '.auth.config and (.auth.config|type=="array")' "$CFG" >/dev/null 2>&1; then
   echo "ERR: auth.config not found or not array"
-  exit 3
+  exit 4
 fi
 
 case "$ACTION" in
@@ -43,7 +48,7 @@ case "$ACTION" in
     ;;
   *)
     echo "Unknown action: $ACTION"
-    exit 4
+    exit 5
     ;;
 esac
 
