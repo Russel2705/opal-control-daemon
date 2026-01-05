@@ -1,3 +1,14 @@
+/**
+ * Opal Control Daemon - ZiVPN Bot
+ * - Paid/Free mode
+ * - Create account (1/14/30)
+ * - Trial fixed 3 hours
+ * - Renew account
+ * - Pakasir QRIS topup + webhook
+ * - Admin panel: list/search/delete account, add saldo
+ * - Auto-expire: delete password from zivpn when expired
+ */
+
 const fs = require("fs");
 const path = require("path");
 const { execFile } = require("child_process");
@@ -9,10 +20,14 @@ const { Telegraf, Markup, session } = require("telegraf");
 // ===== ENV =====
 const MODE = (process.env.MODE || "free").toLowerCase(); // free|paid
 const BOT_TOKEN = process.env.BOT_TOKEN;
-const OWNER_ID = String(process.env.OWNER_ID || "");
-const ADMIN_IDS = String(process.env.ADMIN_IDS || "").split(",").map(s => s.trim()).filter(Boolean);
 
-const DB_DIR = process.env.DB_DIR || path.join(__dirname, "data");
+const OWNER_ID = String(process.env.OWNER_ID || "");
+const ADMIN_IDS = String(process.env.ADMIN_IDS || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+const DB_DIR = process.env.DB_DIR || "/var/lib/opal-daemon";
 
 const PAKASIR_PROJECT = process.env.PAKASIR_PROJECT || ""; // slug/project
 const PAKASIR_API_KEY = process.env.PAKASIR_API_KEY || "";
@@ -22,14 +37,59 @@ const WEBHOOK_PATH = process.env.WEBHOOK_PATH || "/pakasir/webhook";
 
 const TOPUP_MIN = Number(process.env.TOPUP_MIN || 10000);
 
-const ZIVPN_PASS_MGR = process.env.ZIVPN_PASS_MGR || "/usr/local/bin/zivpn-passwd-manager";
-
-// FREE access control (optional)
+// FREE access control
 const FREE_ACCESS = (process.env.FREE_ACCESS || "public").toLowerCase(); // public|private
+
+// Trial duration
+const TRIAL_HOURS = Number(process.env.TRIAL_HOURS || 3);
+
+// ZiVPN password manager path
+const ZIVPN_PASS_MGR = process.env.ZIVPN_PASS_MGR || "/usr/local/bin/zivpn-passwd-manager";
 
 if (!BOT_TOKEN) {
   console.error("BOT_TOKEN is missing");
   process.exit(1);
+}
+
+// ===== Helpers =====
+function ensureDir(p) {
+  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+}
+
+function readJsonSafe(p, fallback) {
+  try {
+    if (!fs.existsSync(p)) return fallback;
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch (e) {
+    console.error("readJsonSafe:", p, e.message);
+    return fallback;
+  }
+}
+
+function writeJson(p, data) {
+  ensureDir(path.dirname(p));
+  fs.writeFileSync(p, JSON.stringify(data, null, 2));
+}
+
+function nowISO() {
+  return new Date().toISOString();
+}
+
+function addDaysISO(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + Number(days));
+  return d.toISOString();
+}
+
+function addHoursISO(hours) {
+  const d = new Date();
+  d.setHours(d.getHours() + Number(hours));
+  return d.toISOString();
+}
+
+function formatRupiah(n) {
+  const x = Number(n || 0);
+  return "Rp" + x.toLocaleString("id-ID");
 }
 
 function isAdminId(userId) {
@@ -43,85 +103,94 @@ function canUseBot(ctx) {
   return isAdminId(ctx.from.id);
 }
 
-// ===== Load UI =====
-function readJsonSafe(p, fallback) {
-  try {
-    if (!fs.existsSync(p)) return fallback;
-    return JSON.parse(fs.readFileSync(p, "utf8"));
-  } catch (e) {
-    console.error("readJsonSafe:", p, e.message);
-    return fallback;
+function denyIfPrivate(ctx) {
+  if (!canUseBot(ctx)) {
+    return ctx.reply("❌ Bot ini mode PRIVATE. Hubungi admin untuk akses.");
   }
+  return null;
 }
 
+// ===== UI config =====
 const UI = readJsonSafe(path.join(__dirname, "config", "ui.json"), {
   brandTitle: "⚡ ZiVPN UDP PREMIUM ⚡",
   brandDesc: [],
-  contact: {}
+  contact: { telegram: "", whatsapp: "", text: "" },
 });
 
-// ===== Simple JSON DB =====
-function ensureDir(p) {
-  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
-}
+// ===== DB files =====
 ensureDir(DB_DIR);
 
 const USERS_DB = path.join(DB_DIR, "users.json");
 const ACC_DB = path.join(DB_DIR, "accounts.json");
 const INV_DB = path.join(DB_DIR, "invoices.json");
 
-function dbRead(file, fallback) {
-  return readJsonSafe(file, fallback);
+function getUsers() {
+  return readJsonSafe(USERS_DB, []);
 }
-function dbWrite(file, data) {
-  ensureDir(path.dirname(file));
-  fs.writeFileSync(file, JSON.stringify(data, null, 2));
+function setUsers(x) {
+  writeJson(USERS_DB, x);
 }
 
-function getUsers() { return dbRead(USERS_DB, []); }
-function setUsers(x) { dbWrite(USERS_DB, x); }
+function getAcc() {
+  return readJsonSafe(ACC_DB, []);
+}
+function setAcc(x) {
+  writeJson(ACC_DB, x);
+}
 
-function getAcc() { return dbRead(ACC_DB, []); }
-function setAcc(x) { dbWrite(ACC_DB, x); }
-
-function getInv() { return dbRead(INV_DB, []); }
-function setInv(x) { dbWrite(INV_DB, x); }
+function getInv() {
+  return readJsonSafe(INV_DB, []);
+}
+function setInv(x) {
+  writeJson(INV_DB, x);
+}
 
 // ===== Users / Balance =====
 function upsertUser(userId, firstName) {
   const all = getUsers();
   const uid = String(userId);
-  let u = all.find(x => String(x.userId) === uid);
+  let u = all.find((x) => String(x.userId) === uid);
   if (!u) {
-    u = { userId: uid, firstName: firstName || "", balance: 0, createdAt: new Date().toISOString() };
+    u = { userId: uid, firstName: firstName || "", balance: 0, createdAt: nowISO(), trialUsed: false };
     all.push(u);
     setUsers(all);
-  } else if (firstName && u.firstName !== firstName) {
-    u.firstName = firstName;
-    setUsers(all);
+  } else {
+    let changed = false;
+    if (firstName && u.firstName !== firstName) {
+      u.firstName = firstName;
+      changed = true;
+    }
+    if (typeof u.trialUsed !== "boolean") {
+      u.trialUsed = false;
+      changed = true;
+    }
+    if (changed) setUsers(all);
   }
   return u;
 }
+
 function getBalance(userId) {
-  const u = getUsers().find(x => String(x.userId) === String(userId));
+  const u = getUsers().find((x) => String(x.userId) === String(userId));
   return u ? Number(u.balance || 0) : 0;
 }
+
 function addBalance(userId, amount) {
   const all = getUsers();
   const uid = String(userId);
-  let u = all.find(x => String(x.userId) === uid);
+  let u = all.find((x) => String(x.userId) === uid);
   if (!u) {
-    u = { userId: uid, firstName: "", balance: 0, createdAt: new Date().toISOString() };
+    u = { userId: uid, firstName: "", balance: 0, createdAt: nowISO(), trialUsed: false };
     all.push(u);
   }
   u.balance = Number(u.balance || 0) + Number(amount || 0);
   setUsers(all);
   return u.balance;
 }
+
 function subBalance(userId, amount) {
   const all = getUsers();
   const uid = String(userId);
-  let u = all.find(x => String(x.userId) === uid);
+  const u = all.find((x) => String(x.userId) === uid);
   if (!u) return false;
   const cur = Number(u.balance || 0);
   if (cur < amount) return false;
@@ -137,48 +206,38 @@ function loadServers() {
   try {
     const raw = JSON.parse(fs.readFileSync(p, "utf8"));
     if (!Array.isArray(raw)) return [];
-    return raw.filter(s => s && s.enabled !== false);
+    return raw.filter((s) => s && s.enabled !== false);
   } catch (e) {
     console.error("servers.json invalid:", e.message);
     return [];
   }
 }
+
 function getServer(code) {
-  return loadServers().find(s => s.code === code);
+  return loadServers().find((s) => s.code === code);
 }
 
-function nowISO() { return new Date().toISOString(); }
-function addDaysISO(days) {
-  const d = new Date();
-  d.setDate(d.getDate() + Number(days));
-  return d.toISOString();
-}
-
+// ===== Accounts =====
 function isExpired(acc) {
   return new Date(acc.expiredAt).getTime() <= Date.now();
 }
 
 function activeAccounts() {
-  // active + not expired (logic)
   const all = getAcc();
-  return all.filter(a => a && a.status === "active" && !isExpired(a));
+  return all.filter((a) => a && a.status === "active" && !isExpired(a));
 }
 
 function countUsed(serverCode) {
-  return activeAccounts().filter(a => a.serverCode === serverCode).length;
-}
-
-function formatRupiah(n) {
-  const x = Number(n || 0);
-  return "Rp" + x.toLocaleString("id-ID");
+  return activeAccounts().filter((a) => a.serverCode === serverCode).length;
 }
 
 function serverCard(s) {
   const used = countUsed(s.code);
   const cap = Number(s.capacity || 0);
-  const status = (cap > 0 && used >= cap) ? "⚠️ Penuh" : "✅ Tersedia";
-  const p1 = s.prices?.["1"] ?? 0;
-  const p30 = s.prices?.["30"] ?? 0;
+  const status = cap > 0 && used >= cap ? "⚠️ Penuh" : "✅ Tersedia";
+
+  const p1 = Number(s.prices?.["1"] || 0);
+  const p30 = Number(s.prices?.["30"] || 0);
 
   return [
     "╔══════════════════════╗",
@@ -190,23 +249,30 @@ function serverCard(s) {
     `📡 Quota: ${Number(s.quota_gb || 0)} GB`,
     `🔐 IP Limit: ${Number(s.ip_limit || 1)} IP`,
     `👥 Akun Terpakai: ${used}/${cap || "-"}`,
-    `📌 Status: ${status}`
+    `📌 Status: ${status}`,
   ].join("\n");
 }
 
 // ===== Stats =====
-function startOfDay(d = new Date()) { const x = new Date(d); x.setHours(0,0,0,0); return x; }
+function startOfDay(d = new Date()) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
 function startOfWeek(d = new Date()) {
   const x = startOfDay(d);
-  const day = (x.getDay() + 6) % 7;
+  const day = (x.getDay() + 6) % 7; // Monday=0
   x.setDate(x.getDate() - day);
   return x;
 }
-function startOfMonth(d = new Date()) { const x = startOfDay(d); x.setDate(1); return x; }
-
+function startOfMonth(d = new Date()) {
+  const x = startOfDay(d);
+  x.setDate(1);
+  return x;
+}
 function countCreated({ userId = null, from = null } = {}) {
   const all = getAcc();
-  return all.filter(a => {
+  return all.filter((a) => {
     if (!a) return false;
     const t = new Date(a.createdAt || 0).getTime();
     if (from && t < from.getTime()) return false;
@@ -215,7 +281,7 @@ function countCreated({ userId = null, from = null } = {}) {
   }).length;
 }
 
-// ===== ZIVPN Password ops =====
+// ===== ZiVPN Password Ops =====
 function passCheck(pass) {
   return new Promise((resolve) => {
     execFile(ZIVPN_PASS_MGR, ["check", pass], (err, stdout) => {
@@ -239,9 +305,23 @@ function passDel(pass) {
   });
 }
 
-// ===== Bot =====
+function validPassword(pass) {
+  if (!pass) return false;
+  if (pass.length < 3 || pass.length > 32) return false;
+  if (pass.includes(" ") || pass.includes(",")) return false;
+  return true;
+}
+
+// ===== Telegram Bot =====
 const bot = new Telegraf(BOT_TOKEN);
+
+// session middleware
 bot.use(session());
+// make sure ctx.session always exists
+bot.use((ctx, next) => {
+  if (!ctx.session) ctx.session = {};
+  return next();
+});
 
 bot.catch((err) => console.error("BOT ERROR:", err));
 process.on("unhandledRejection", (r) => console.error("UNHANDLED:", r));
@@ -251,7 +331,7 @@ function mainKb(ctx) {
   const rows = [
     ["➕ Buat Akun", "♻️ Perpanjang Akun"],
     ["⏳ Trial Akun", MODE === "paid" ? "💰 TopUp Saldo" : "📌 Bantuan"],
-    ["📌 Akun Saya", "📞 Bantuan"]
+    ["📌 Akun Saya", "📞 Bantuan"],
   ];
   if (isAdminId(ctx.from.id)) rows.push(["⚙️ Admin Panel"]);
   return Markup.keyboard(rows).resize();
@@ -261,36 +341,61 @@ function adminKb() {
   return Markup.keyboard([
     ["📋 List Akun Aktif", "🔎 Cari Akun"],
     ["🗑️ Delete Akun", "💳 Tambah Saldo User"],
-    ["⬅️ Kembali"]
+    ["⬅️ Kembali"],
   ]).resize();
 }
 
-function denyIfPrivate(ctx) {
-  if (!canUseBot(ctx)) {
-    return ctx.reply("❌ Bot ini mode PRIVATE. Hubungi admin untuk akses.");
-  }
-  return null;
+// ===== Inline keyboards =====
+function serversInline(mode /* 'buy' | 'trial' */) {
+  const sv = loadServers();
+  const buttons = sv.map((s) => Markup.button.callback(s.code, `srv:${s.code}:${mode}`));
+  const rows = [];
+  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
+  rows.push([Markup.button.callback("❌ Tutup", "close")]);
+  return Markup.inlineKeyboard(rows);
 }
 
+function packageInline(serverCode) {
+  const s = getServer(serverCode);
+  const daysList = [1, 14, 30];
+  const rows = daysList.map((d) => {
+    const price = MODE === "paid" ? Number(s?.prices?.[String(d)] || 0) : 0;
+    const label = MODE === "paid" ? `${d} Hari (${formatRupiah(price)})` : `${d} Hari (GRATIS)`;
+    return [Markup.button.callback(label, `pkg:${serverCode}:${d}`)];
+  });
+  rows.push([Markup.button.callback("⬅️ Kembali", `back:${serverCode}`)]);
+  return Markup.inlineKeyboard(rows);
+}
+
+bot.action("close", async (ctx) => {
+  await ctx.answerCbQuery();
+  try {
+    await ctx.deleteMessage();
+  } catch (_) {}
+});
+
+// ===== /start =====
 bot.start(async (ctx) => {
-  const denied = denyIfPrivate(ctx); if (denied) return;
+  const denied = denyIfPrivate(ctx);
+  if (denied) return;
+
   upsertUser(ctx.from.id, ctx.from.first_name);
 
   const uid = ctx.from.id;
   const saldo = getBalance(uid);
 
   const today = countCreated({ userId: uid, from: startOfDay() });
-  const week  = countCreated({ userId: uid, from: startOfWeek() });
+  const week = countCreated({ userId: uid, from: startOfWeek() });
   const month = countCreated({ userId: uid, from: startOfMonth() });
 
   const gToday = countCreated({ from: startOfDay() });
-  const gWeek  = countCreated({ from: startOfWeek() });
+  const gWeek = countCreated({ from: startOfWeek() });
   const gMonth = countCreated({ from: startOfMonth() });
 
   const c = UI.contact || {};
   const lines = [
     `╭━ ${UI.brandTitle} ━╮`,
-    ...(UI.brandDesc || []).map(x => `┃ ${x}`),
+    ...(UI.brandDesc || []).map((x) => `┃ ${x}`),
     "╰━━━━━━━━━━━━━━━━━━╯",
     "",
     `👋 Hai, ${ctx.from.first_name}!`,
@@ -311,153 +416,189 @@ bot.start(async (ctx) => {
     "☎️ Bantuan / Kontak",
     c.telegram ? `• Telegram: ${c.telegram}` : null,
     c.whatsapp ? `• WhatsApp: ${c.whatsapp}` : null,
-    c.text ? `• ${c.text}` : null
+    c.text ? `• ${c.text}` : null,
   ].filter(Boolean);
 
   return ctx.reply(lines.join("\n"), mainKb(ctx));
 });
 
 bot.hears("📞 Bantuan", async (ctx) => {
-  const denied = denyIfPrivate(ctx); if (denied) return;
+  const denied = denyIfPrivate(ctx);
+  if (denied) return;
+
   const c = UI.contact || {};
   const msg = [
     "📞 Bantuan / Kontak",
     c.telegram ? `• Telegram: ${c.telegram}` : null,
     c.whatsapp ? `• WhatsApp: ${c.whatsapp}` : null,
-    c.text ? `• ${c.text}` : null
-  ].filter(Boolean).join("\n");
+    c.text ? `• ${c.text}` : null,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   return ctx.reply(msg, mainKb(ctx));
 });
 
-// ===== Server list inline buttons =====
-function serversInline() {
-  const sv = loadServers();
-  const buttons = sv.map(s => Markup.button.callback(s.code, `srv:${s.code}`));
-  // 2 kolom
-  const rows = [];
-  for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
-  return Markup.inlineKeyboard(rows);
-}
-
-function packageInline(serverCode, isTrial=false) {
-  const s = getServer(serverCode);
-  const days = [1, 14, 30];
-  const rows = days.map(d => {
-    let price = 0;
-    if (!isTrial && MODE === "paid") price = Number(s?.prices?.[String(d)] || 0);
-    return [Markup.button.callback(`${d} Hari ${MODE==="paid" && !isTrial ? `(${formatRupiah(price)})` : "(GRATIS)"}`, `pkg:${serverCode}:${d}:${isTrial?1:0}`)];
-  });
-  rows.push([Markup.button.callback("⬅️ Kembali", "back:servers")]);
-  return Markup.inlineKeyboard(rows);
-}
-
+// ===== Create account =====
 bot.hears("➕ Buat Akun", async (ctx) => {
-  const denied = denyIfPrivate(ctx); if (denied) return;
+  const denied = denyIfPrivate(ctx);
+  if (denied) return;
 
   const sv = loadServers();
   if (!sv.length) return ctx.reply("❌ Config server belum ada. Isi: config/servers.json", mainKb(ctx));
 
   const text = sv.map(serverCard).join("\n\n");
-  return ctx.reply(text, serversInline());
+  return ctx.reply(text, serversInline("buy"));
 });
 
+// ===== Trial (fixed 3 hours) =====
 bot.hears("⏳ Trial Akun", async (ctx) => {
-  const denied = denyIfPrivate(ctx); if (denied) return;
+  const denied = denyIfPrivate(ctx);
+  if (denied) return;
 
   const sv = loadServers();
   if (!sv.length) return ctx.reply("❌ Config server belum ada. Isi: config/servers.json", mainKb(ctx));
 
-  // Trial: hanya 1x per user (contoh sederhana)
   const u = upsertUser(ctx.from.id, ctx.from.first_name);
-  const users = getUsers();
-  const me = users.find(x => x.userId === u.userId);
-  if (me && me.trialUsed) {
+  if (u.trialUsed) {
     return ctx.reply("❌ Trial hanya 1x untuk tiap user.", mainKb(ctx));
   }
 
-  const text = "✅ PILIH SERVER (TRIAL)\n\n" + sv.map(serverCard).join("\n\n");
-  return ctx.reply(text, serversInline());
+  const text = `⏳ TRIAL ${TRIAL_HOURS} JAM\n\n` + sv.map(serverCard).join("\n\n");
+  return ctx.reply(text, serversInline("trial"));
 });
 
-bot.action("back:servers", async (ctx) => {
+// ===== Back button =====
+bot.action(/^back:([^:]+)$/i, async (ctx) => {
   await ctx.answerCbQuery();
   const sv = loadServers();
   const text = sv.map(serverCard).join("\n\n");
-  return ctx.editMessageText(text, serversInline());
+  return ctx.editMessageText(text, serversInline("buy"));
 });
 
-bot.action(/^srv:(.+)$/i, async (ctx) => {
-  await ctx.answerCbQuery();
-  const code = ctx.match[1];
-  const s = getServer(code);
-  if (!s) return ctx.reply("Server tidak ditemukan.");
-
-  const isTrial = (ctx.update.callback_query.message.text || "").includes("(TRIAL)") || false;
-  const msg = serverCard(s) + "\n\n🛒 Pilih Paket:";
-  return ctx.editMessageText(msg, packageInline(code, isTrial));
-});
-
-bot.action(/^pkg:([^:]+):(\d+):(\d)$/i, async (ctx) => {
+// ===== Server selected =====
+bot.action(/^srv:([^:]+):(buy|trial)$/i, async (ctx) => {
   await ctx.answerCbQuery();
   const serverCode = ctx.match[1];
-  const days = Number(ctx.match[2]);
-  const isTrial = ctx.match[3] === "1";
+  const mode = ctx.match[2];
 
   const s = getServer(serverCode);
-  if (!s) return ctx.reply("Server tidak ditemukan.");
+  if (!s) return ctx.reply("Server tidak ditemukan.", mainKb(ctx));
 
-  // cek slot
+  // slot check
   const used = countUsed(serverCode);
   if (s.capacity && used >= s.capacity) return ctx.reply("⚠️ Server penuh. Pilih server lain.", mainKb(ctx));
 
-  // paid: cek saldo
-  let price = 0;
-  if (MODE === "paid" && !isTrial) {
-    price = Number(s.prices?.[String(days)] || 0);
-    if (price <= 0) return ctx.reply("Harga paket belum diset di servers.json");
-    const bal = getBalance(ctx.from.id);
-    if (bal < price) return ctx.reply(`❌ Saldo kurang. Harga: ${formatRupiah(price)}\nSaldo: ${formatRupiah(bal)}`, mainKb(ctx));
+  if (mode === "trial") {
+    // set flow: trial fixed hours
+    ctx.session.flow = { type: "trial", serverCode, trialHours: TRIAL_HOURS };
+    return ctx.reply(
+      `⏳ TRIAL ${TRIAL_HOURS} JAM\nHost: ${s.host}\n\n🔑 Masukkan password akun (unik)\nAturan:\n• 3-32 karakter\n• Tanpa spasi/koma\n• Harus unik`,
+      mainKb(ctx)
+    );
   }
 
-  ctx.session.flow = {
-    type: isTrial ? "trial" : "create",
-    serverCode,
-    days,
-    price
-  };
+  // normal buy: show packages
+  const msg = serverCard(s) + "\n\n🛒 Pilih Paket:";
+  return ctx.editMessageText(msg, packageInline(serverCode));
+});
 
+// ===== Package selected (buy) =====
+bot.action(/^pkg:([^:]+):(\d+)$/i, async (ctx) => {
+  await ctx.answerCbQuery();
+  const serverCode = ctx.match[1];
+  const days = Number(ctx.match[2]);
+
+  const s = getServer(serverCode);
+  if (!s) return ctx.reply("Server tidak ditemukan.", mainKb(ctx));
+
+  // slot check
+  const used = countUsed(serverCode);
+  if (s.capacity && used >= s.capacity) return ctx.reply("⚠️ Server penuh. Pilih server lain.", mainKb(ctx));
+
+  let price = 0;
+  if (MODE === "paid") {
+    price = Number(s.prices?.[String(days)] || 0);
+    if (price <= 0) return ctx.reply("Harga paket belum diset di servers.json", mainKb(ctx));
+
+    const bal = getBalance(ctx.from.id);
+    if (bal < price) {
+      return ctx.reply(`❌ Saldo kurang.\nHarga: ${formatRupiah(price)}\nSaldo: ${formatRupiah(bal)}`, mainKb(ctx));
+    }
+  }
+
+  ctx.session.flow = { type: "create", serverCode, days, price };
   return ctx.reply(
-    `🔑 Masukkan password akun\nAturan:\n• 3-32 karakter\n• Tanpa spasi/koma\n• Harus unik\n\nPaket: ${days} hari`,
+    `🔑 Masukkan password akun (unik)\nAturan:\n• 3-32 karakter\n• Tanpa spasi/koma\n• Harus unik\n\nPaket: ${days} hari`,
     mainKb(ctx)
   );
 });
 
-// ===== Perpanjang =====
+// ===== Renew =====
 bot.hears("♻️ Perpanjang Akun", async (ctx) => {
-  const denied = denyIfPrivate(ctx); if (denied) return;
+  const denied = denyIfPrivate(ctx);
+  if (denied) return;
+
   ctx.session.renew = true;
   return ctx.reply("🔑 Kirim password akun yang ingin diperpanjang:", mainKb(ctx));
 });
 
-// ===== Akun Saya =====
+bot.action(/^renew:([^:]+):(\d+)$/i, async (ctx) => {
+  await ctx.answerCbQuery();
+  const pass = ctx.match[1];
+  const days = Number(ctx.match[2]);
+
+  const all = getAcc();
+  const a = all.find((x) => x.password === pass && x.status === "active" && !isExpired(x));
+  if (!a) return ctx.reply("❌ Akun tidak ditemukan / sudah expired.", mainKb(ctx));
+
+  const s = getServer(a.serverCode);
+  if (!s) return ctx.reply("Server config tidak ditemukan.", mainKb(ctx));
+
+  const price = MODE === "paid" ? Number(s.prices?.[String(days)] || 0) : 0;
+  if (MODE === "paid") {
+    const ok = subBalance(ctx.from.id, price);
+    if (!ok) return ctx.reply("❌ Saldo kurang untuk perpanjang.", mainKb(ctx));
+  }
+
+  const cur = new Date(a.expiredAt);
+  cur.setDate(cur.getDate() + days);
+  a.expiredAt = cur.toISOString();
+  setAcc(all);
+
+  return ctx.reply(
+    `✅ Perpanjang Berhasil\n\nDomain : ${a.host}\nPassword : ${a.password}\nExpired : ${new Date(a.expiredAt).toLocaleString("id-ID")}`,
+    mainKb(ctx)
+  );
+});
+
+// ===== My account =====
 bot.hears("📌 Akun Saya", async (ctx) => {
-  const denied = denyIfPrivate(ctx); if (denied) return;
+  const denied = denyIfPrivate(ctx);
+  if (denied) return;
+
   const uid = String(ctx.from.id);
-  const mine = activeAccounts().filter(a => String(a.userId) === uid);
+  const mine = activeAccounts().filter((a) => String(a.userId) === uid);
   if (!mine.length) return ctx.reply("Belum ada akun aktif.", mainKb(ctx));
 
-  const msg = mine.map((a, i) =>
-    `${i+1}) Domain: ${a.host}\nPassword: ${a.password}\nExpired: ${new Date(a.expiredAt).toLocaleString("id-ID")}\nServer: ${a.serverCode}\n---`
-  ).join("\n");
+  const msg = mine
+    .map(
+      (a, i) =>
+        `${i + 1}) Domain: ${a.host}\nPassword: ${a.password}\nExpired: ${new Date(a.expiredAt).toLocaleString("id-ID")}\nServer: ${
+          a.serverCode
+        }\n---`
+    )
+    .join("\n");
 
   return ctx.reply(msg, mainKb(ctx));
 });
 
 // ===== TopUp (PAID) =====
+// Use regex so button text differences won't break
 bot.hears(/top\s*up|topup/i, async (ctx) => {
-  if (!ctx.session) ctx.session = {};        // ✅ FIX UTAMA
+  const denied = denyIfPrivate(ctx);
+  if (denied) return;
 
-  const denied = denyIfPrivate(ctx); if (denied) return;
   if (MODE !== "paid") return ctx.reply("Fitur topup hanya untuk mode PAID.", mainKb(ctx));
 
   ctx.session.topup = true;
@@ -479,9 +620,14 @@ bot.hears("📋 List Akun Aktif", async (ctx) => {
   const acc = activeAccounts().slice(-50).reverse();
   if (!acc.length) return ctx.reply("Belum ada akun aktif.", adminKb());
 
-  const msg = acc.map((a, i) =>
-    `${i+1}) ${a.serverCode}\nDomain: ${a.host}\nPass: ${a.password}\nExp: ${new Date(a.expiredAt).toLocaleString("id-ID")}\nUserID: ${a.userId}\n---`
-  ).join("\n");
+  const msg = acc
+    .map(
+      (a, i) =>
+        `${i + 1}) ${a.serverCode}\nDomain: ${a.host}\nPass: ${a.password}\nExp: ${new Date(a.expiredAt).toLocaleString("id-ID")}\nUserID: ${
+          a.userId
+        }\n---`
+    )
+    .join("\n");
   return ctx.reply(msg, adminKb());
 });
 
@@ -505,15 +651,16 @@ bot.hears("💳 Tambah Saldo User", async (ctx) => {
 
 // ===== Text handler for flows =====
 bot.on("text", async (ctx) => {
-  const denied = denyIfPrivate(ctx); if (denied) return;
+  const denied = denyIfPrivate(ctx);
+  if (denied) return;
 
   const text = String(ctx.message.text || "").trim();
   upsertUser(ctx.from.id, ctx.from.first_name);
 
-  // Admin: find
+  // Admin: find account
   if (ctx.session.findPass && isAdminId(ctx.from.id)) {
     ctx.session.findPass = false;
-    const a = getAcc().find(x => x.password === text);
+    const a = getAcc().find((x) => x.password === text);
     if (!a) return ctx.reply("Tidak ditemukan.", adminKb());
     return ctx.reply(
       `✅ Ditemukan\nDomain: ${a.host}\nPass: ${a.password}\nExp: ${new Date(a.expiredAt).toLocaleString("id-ID")}\nStatus: ${a.status}\nUserID: ${a.userId}`,
@@ -521,12 +668,13 @@ bot.on("text", async (ctx) => {
     );
   }
 
-  // Admin: delete
+  // Admin: delete account
   if (ctx.session.delPass && isAdminId(ctx.from.id)) {
     ctx.session.delPass = false;
     const pass = text;
+
     const all = getAcc();
-    const idx = all.findIndex(a => a.password === pass && a.status === "active");
+    const idx = all.findIndex((a) => a.password === pass && a.status === "active");
     if (idx === -1) return ctx.reply("Akun tidak ditemukan / sudah dihapus.", adminKb());
 
     all[idx].status = "deleted";
@@ -550,50 +698,55 @@ bot.on("text", async (ctx) => {
     return ctx.reply(`✅ Saldo user ${uid} ditambah ${formatRupiah(amt)}`, adminKb());
   }
 
-  // Renew flow
+  // Renew flow: user sends password
   if (ctx.session.renew) {
     ctx.session.renew = false;
     const pass = text;
 
     const all = getAcc();
-    const a = all.find(x => x.password === pass && x.status === "active" && !isExpired(x));
+    const a = all.find((x) => x.password === pass && x.status === "active" && !isExpired(x));
     if (!a) return ctx.reply("❌ Akun tidak ditemukan / sudah expired.", mainKb(ctx));
 
-    // tampil pilihan paket (sesuai server)
     const s = getServer(a.serverCode);
     if (!s) return ctx.reply("Server config tidak ditemukan.", mainKb(ctx));
 
-    ctx.session.flow = { type: "renew", password: pass, serverCode: a.serverCode };
-    const rows = [1,14,30].map(d => {
-      const price = (MODE === "paid") ? Number(s.prices?.[String(d)] || 0) : 0;
-      return [Markup.button.callback(`${d} Hari ${MODE==="paid" ? `(${formatRupiah(price)})` : "(GRATIS)"}`, `renew:${pass}:${d}`)];
+    const rows = [1, 14, 30].map((d) => {
+      const price = MODE === "paid" ? Number(s.prices?.[String(d)] || 0) : 0;
+      const label = MODE === "paid" ? `${d} Hari (${formatRupiah(price)})` : `${d} Hari (GRATIS)`;
+      return [Markup.button.callback(label, `renew:${pass}:${d}`)];
     });
+
     return ctx.reply("Pilih paket perpanjang:", Markup.inlineKeyboard(rows));
   }
 
-  // Create/trial flow awaiting password
+  // Create/Trial awaiting password
   if (ctx.session.flow && (ctx.session.flow.type === "create" || ctx.session.flow.type === "trial")) {
-    const { serverCode, days, price, type } = ctx.session.flow;
+    const { serverCode, days, price, type, trialHours } = ctx.session.flow;
     ctx.session.flow = null;
 
     const pass = text;
 
-    // simple validation
-    if (pass.length < 3 || pass.length > 32 || pass.includes(" ") || pass.includes(",")) {
+    if (!validPassword(pass)) {
       return ctx.reply("❌ Password tidak valid. (3-32 char, tanpa spasi/koma)", mainKb(ctx));
     }
 
-    // cek unik (DB + config)
-    const existsDb = activeAccounts().some(a => a.password === pass);
+    // unique checks
+    const existsDb = activeAccounts().some((a) => a.password === pass);
     const existsSys = await passCheck(pass);
-    if (existsDb || existsSys) return ctx.reply("❌ Password sudah dipakai. Gunakan yang lain.", mainKb(ctx));
+    if (existsDb || existsSys) {
+      return ctx.reply("❌ Password sudah dipakai. Gunakan yang lain.", mainKb(ctx));
+    }
 
     const s = getServer(serverCode);
     if (!s) return ctx.reply("Server tidak ditemukan.", mainKb(ctx));
 
-    // paid: potong saldo
-    if (MODE === "paid" && type !== "trial") {
-      const ok = subBalance(ctx.from.id, Number(price));
+    // slot check again
+    const used = countUsed(serverCode);
+    if (s.capacity && used >= s.capacity) return ctx.reply("⚠️ Server penuh. Pilih server lain.", mainKb(ctx));
+
+    // paid: cut balance (only for create, not trial)
+    if (MODE === "paid" && type === "create") {
+      const ok = subBalance(ctx.from.id, Number(price || 0));
       if (!ok) return ctx.reply("❌ Saldo kurang.", mainKb(ctx));
     }
 
@@ -601,15 +754,19 @@ bot.on("text", async (ctx) => {
     try {
       await passAdd(pass);
     } catch (e) {
-      // refund kalau paid
-      if (MODE === "paid" && type !== "trial") addBalance(ctx.from.id, Number(price));
+      // refund if paid create
+      if (MODE === "paid" && type === "create") addBalance(ctx.from.id, Number(price || 0));
       return ctx.reply(`❌ Gagal membuat akun: ${e.message}`, mainKb(ctx));
     }
 
+    // set expiry
+    const exp =
+      type === "trial"
+        ? addHoursISO(trialHours || TRIAL_HOURS) // ✅ trial fixed hours
+        : addDaysISO(days);
+
     // store account
     const all = getAcc();
-    const exp = addDaysISO(days);
-
     all.push({
       id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       userId: String(ctx.from.id),
@@ -618,15 +775,19 @@ bot.on("text", async (ctx) => {
       password: pass,
       createdAt: nowISO(),
       expiredAt: exp,
-      status: "active"
+      status: "active",
+      kind: type === "trial" ? "trial" : "paid",
     });
     setAcc(all);
 
-    // trial mark
+    // trial mark used
     if (type === "trial") {
       const users = getUsers();
-      const u = users.find(x => x.userId === String(ctx.from.id));
-      if (u) { u.trialUsed = true; setUsers(users); }
+      const u = users.find((x) => x.userId === String(ctx.from.id));
+      if (u) {
+        u.trialUsed = true;
+        setUsers(users);
+      }
     }
 
     return ctx.reply(
@@ -635,9 +796,10 @@ bot.on("text", async (ctx) => {
     );
   }
 
-  // Topup flow
+  // Topup flow (paid)
   if (ctx.session.topup && MODE === "paid") {
     ctx.session.topup = false;
+
     const amount = Number(text.replace(/[^\d]/g, ""));
     if (!amount || amount < TOPUP_MIN) return ctx.reply(`❌ Minimal topup ${formatRupiah(TOPUP_MIN)}`, mainKb(ctx));
 
@@ -647,8 +809,6 @@ bot.on("text", async (ctx) => {
 
     const orderId = `TOPUP-${ctx.from.id}-${Date.now()}`;
 
-    // Pakasir Transaction Create QRIS (official)
-    // POST https://app.pakasir.com/api/transactioncreate/qris body: project, order_id, amount, api_key :contentReference[oaicite:1]{index=1}
     let res;
     try {
       res = await fetch("https://app.pakasir.com/api/transactioncreate/qris", {
@@ -658,19 +818,19 @@ bot.on("text", async (ctx) => {
           project: PAKASIR_PROJECT,
           order_id: orderId,
           amount: amount,
-          api_key: PAKASIR_API_KEY
-        })
+          api_key: PAKASIR_API_KEY,
+        }),
       });
     } catch (e) {
       return ctx.reply("❌ Gagal konek ke Pakasir (network). Coba lagi.", mainKb(ctx));
     }
 
     if (!res.ok) {
-      const t = await res.text().catch(()=> "");
-      return ctx.reply(`❌ Pakasir error: HTTP ${res.status}\n${t.slice(0,300)}`, mainKb(ctx));
+      const t = await res.text().catch(() => "");
+      return ctx.reply(`❌ Pakasir error: HTTP ${res.status}\n${t.slice(0, 300)}`, mainKb(ctx));
     }
 
-    const data = await res.json().catch(()=> null);
+    const data = await res.json().catch(() => null);
     const pay = data?.payment;
     if (!pay?.payment_number) return ctx.reply("❌ Respon Pakasir tidak valid.", mainKb(ctx));
 
@@ -690,7 +850,7 @@ bot.on("text", async (ctx) => {
       amount,
       totalPay,
       status: "pending",
-      createdAt: nowISO()
+      createdAt: nowISO(),
     });
     setInv(inv);
 
@@ -700,43 +860,15 @@ bot.on("text", async (ctx) => {
         caption:
           `✅ TopUp Dibuat\nOrder: ${orderId}\nNominal: ${formatRupiah(amount)}\nTotal Bayar: ${formatRupiah(totalPay)}\n` +
           (expAt ? `Expired: ${expAt}\n` : "") +
-          `\nSilakan scan QRIS.\n\nJika sudah bayar, saldo masuk otomatis.`
+          `\nSilakan scan QRIS.\n\nJika sudah bayar, saldo masuk otomatis.`,
       }
     );
   }
+
+  // default: ignore
 });
 
-// Renew callback
-bot.action(/^renew:([^:]+):(\d+)$/i, async (ctx) => {
-  await ctx.answerCbQuery();
-  const pass = ctx.match[1];
-  const days = Number(ctx.match[2]);
-
-  const all = getAcc();
-  const a = all.find(x => x.password === pass && x.status === "active" && !isExpired(x));
-  if (!a) return ctx.reply("❌ Akun tidak ditemukan / sudah expired.", mainKb(ctx));
-
-  const s = getServer(a.serverCode);
-  if (!s) return ctx.reply("Server config tidak ditemukan.", mainKb(ctx));
-
-  const price = (MODE === "paid") ? Number(s.prices?.[String(days)] || 0) : 0;
-  if (MODE === "paid") {
-    const ok = subBalance(ctx.from.id, price);
-    if (!ok) return ctx.reply("❌ Saldo kurang untuk perpanjang.", mainKb(ctx));
-  }
-
-  const cur = new Date(a.expiredAt);
-  cur.setDate(cur.getDate() + days);
-  a.expiredAt = cur.toISOString();
-  setAcc(all);
-
-  return ctx.reply(
-    `✅ Perpanjang Berhasil\n\nDomain : ${a.host}\nPassword : ${a.password}\nExpired : ${new Date(a.expiredAt).toLocaleString("id-ID")}`,
-    mainKb(ctx)
-  );
-});
-
-// ===== Auto-expire job (hapus password kalau expired) =====
+// ===== Auto-expire job (every 60s) =====
 setInterval(async () => {
   const all = getAcc();
   let changed = false;
@@ -768,8 +900,6 @@ app.post(WEBHOOK_PATH, async (req, res) => {
   }
 
   const body = req.body || {};
-
-  // Pakasir webhook payload: amount, order_id, project, status, payment_method, completed_at :contentReference[oaicite:2]{index=2}
   const orderId = String(body.order_id || "");
   const amount = Number(body.amount || 0);
   const project = String(body.project || "");
@@ -777,10 +907,10 @@ app.post(WEBHOOK_PATH, async (req, res) => {
 
   if (!orderId || !amount || !project) return res.status(400).json({ ok: false, error: "bad_payload" });
 
-  // verify with transactiondetail (recommended by Pakasir) :contentReference[oaicite:3]{index=3}
   if (!PAKASIR_API_KEY) return res.status(500).json({ ok: false, error: "api_key_missing" });
 
   try {
+    // verify with transactiondetail
     const url =
       `https://app.pakasir.com/api/transactiondetail?project=${encodeURIComponent(project)}` +
       `&amount=${encodeURIComponent(amount)}` +
@@ -788,24 +918,21 @@ app.post(WEBHOOK_PATH, async (req, res) => {
       `&api_key=${encodeURIComponent(PAKASIR_API_KEY)}`;
 
     const r = await fetch(url);
-    const j = await r.json().catch(()=> null);
+    const j = await r.json().catch(() => null);
     const tStatus = j?.transaction?.status;
 
-    if (tStatus !== "completed") return res.json({ ok: true, ignored: true, status: tStatus });
+    if (tStatus !== "completed") return res.json({ ok: true, ignored: true, status: tStatus, rawStatus: status });
 
     // mark invoice + credit balance
     const inv = getInv();
-    const i = inv.find(x => x.orderId === orderId && x.status === "pending");
+    const i = inv.find((x) => x.orderId === orderId && x.status === "pending");
     if (!i) return res.json({ ok: true, note: "invoice_not_found_or_already_done" });
 
     i.status = "paid";
     i.paidAt = nowISO();
-
     setInv(inv);
 
-    // credit "amount" to balance
     addBalance(i.userId, i.amount);
-
     return res.json({ ok: true });
   } catch (e) {
     console.error("webhook error:", e.message);
