@@ -186,18 +186,31 @@ function serverCardText() {
 // ===== ZiVPN core integration =====
 function zivpnAddPassword(password) {
   return new Promise((resolve, reject) => {
-    execFile("/usr/local/bin/zivpn-passwd-manager", "add", password], (err, stdout, stderr) => {
-      if (err) return reject(new Error((stderr || stdout || err.message || "").toString()));
-      resolve(stdout.trim());
-    });
+    execFile(
+      "/usr/local/bin/zivpn-passwd-manager",
+      ["add", password],
+      (err, stdout, stderr) => {
+        if (err) {
+          return reject(new Error((stderr || stdout || err.message || "").toString()));
+        }
+        resolve((stdout || "").toString().trim());
+      }
+    );
   });
 }
+
 function zivpnDelPassword(password) {
   return new Promise((resolve, reject) => {
-    execFile("/usr/local/bin/zivpn-passwd-manager", "del", password], (err, stdout, stderr) => {
-      if (err) return reject(new Error((stderr || stdout || err.message || "").toString()));
-      resolve(stdout.trim());
-    });
+    execFile(
+      "/usr/local/bin/zivpn-passwd-manager",
+      ["del", password],
+      (err, stdout, stderr) => {
+        if (err) {
+          return reject(new Error((stderr || stdout || err.message || "").toString()));
+        }
+        resolve((stdout || "").toString().trim());
+      }
+    );
   });
 }
 
