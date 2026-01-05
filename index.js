@@ -341,6 +341,7 @@ function adminKb() {
   return Markup.keyboard([
     ["📋 List Akun Aktif", "🔎 Cari Akun"],
     ["🗑️ Delete Akun", "💳 Tambah Saldo User"],
+    ["💰 Cek Saldo User"],
     ["⬅️ Kembali"],
   ]).resize();
 }
@@ -640,13 +641,22 @@ bot.hears("🔎 Cari Akun", async (ctx) => {
 bot.hears("🗑️ Delete Akun", async (ctx) => {
   if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
   ctx.session.delPass = true;
-  return ctx.reply("Kirim password akun untuk dihapus:", adminKb());
+  return ctx.reply(
+    "Format hapus: <user_id> <password>\nContoh: 5688411076 eko12345",
+    adminKb()
+  );
 });
 
 bot.hears("💳 Tambah Saldo User", async (ctx) => {
   if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
   ctx.session.addSaldo = true;
   return ctx.reply("Format: <user_id> <nominal>\nContoh: 5688411076 20000", adminKb());
+});
+
+bot.hears("💰 Cek Saldo User", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+  ctx.session.checkSaldo = true;
+  return ctx.reply("Kirim user_id untuk cek saldo.\nContoh: 5688411076", adminKb());
 });
 
 // ===== Text handler for flows =====
@@ -668,13 +678,28 @@ bot.on("text", async (ctx) => {
     );
   }
 
-  // Admin: delete account
+    // Admin: delete account (FORMAT: <user_id> <password>)
   if (ctx.session.delPass && isAdminId(ctx.from.id)) {
     ctx.session.delPass = false;
-    const pass = text;
+
+    const parts = text.split(/\s+/);
+    if (parts.length < 2) {
+      return ctx.reply("Format salah.\nGunakan: <user_id> <password>\nContoh: 5688411076 eko12345", adminKb());
+    }
+
+    const uid = parts[0];
+    const pass = parts.slice(1).join(" ");
+
+    if (!/^\d+$/.test(uid)) return ctx.reply("user_id harus angka.", adminKb());
 
     const all = getAcc();
-    const idx = all.findIndex((a) => a.password === pass && a.status === "active");
+    const idx = all.findIndex(
+      (a) =>
+        a.status === "active" &&
+        String(a.userId) === String(uid) &&
+        a.password === pass
+    );
+
     if (idx === -1) return ctx.reply("Akun tidak ditemukan / sudah dihapus.", adminKb());
 
     all[idx].status = "deleted";
@@ -683,7 +708,7 @@ bot.on("text", async (ctx) => {
     setAcc(all);
 
     await passDel(pass);
-    return ctx.reply("✅ Akun sudah dihapus.", adminKb());
+    return ctx.reply(`✅ Akun user ${uid} dengan password ${pass} sudah dihapus.`, adminKb());
   }
 
   // Admin: add saldo
@@ -696,6 +721,17 @@ bot.on("text", async (ctx) => {
     if (!amt || amt <= 0) return ctx.reply("Nominal tidak valid.", adminKb());
     addBalance(uid, amt);
     return ctx.reply(`✅ Saldo user ${uid} ditambah ${formatRupiah(amt)}`, adminKb());
+  }
+
+    // Admin: check saldo user
+  if (ctx.session.checkSaldo && isAdminId(ctx.from.id)) {
+    ctx.session.checkSaldo = false;
+
+    const uid = text.trim();
+    if (!/^\d+$/.test(uid)) return ctx.reply("user_id harus angka.", adminKb());
+
+    const bal = getBalance(uid);
+    return ctx.reply(`💰 Saldo user ${uid}: ${formatRupiah(bal)}`, adminKb());
   }
 
   // Renew flow: user sends password
