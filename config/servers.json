@@ -1,7 +1,7 @@
 [
   {
     "code": "RumahWeb ID-IP1",
-    "name": "🟦 RumahWeb 🇲🇨 ID - IP LIMIT 1",
+    "name": "🟦🇲🇨UDP ZIVPN ID - 1IP",
     "host": "id.xstore1.cloud",
     "quota_gb": 0,
     "ip_limit": 1,
@@ -11,7 +11,7 @@
   },
   {
     "code": "RunahWeb ID-IP2",
-    "name": "🟦 RumahWeb 🇲🇨 ID - IP LIMIT 2",
+    "name": "🟦🇲🇨UDP ZIVPN ID - 2IP",
     "host": "id.xstore1.cloud",
     "quota_gb": 0,
     "ip_limit": 2,
