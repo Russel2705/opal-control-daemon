@@ -1,22 +1,22 @@
 [
   {
-    "code": "ID-IP1",
-    "name": "🟦 🇲🇨 ID - IP LIMIT 1",
-    "host": "id.xstore1.dpdns.org",
-    "quota_gb": 100,
+    "code": "RumahWeb ID-IP1",
+    "name": "🟦 RumahWeb 🇲🇨 ID - IP LIMIT 1",
+    "host": "id.xstore1.cloud",
+    "quota_gb": 0,
     "ip_limit": 1,
-    "capacity": 20,
-    "prices": { "1": 166, "14": 2324, "30": 4980 },
+    "capacity": 50,
+    "prices": { "1": 167, "14": 2500, "30": 5000 },
     "enabled": true
   },
   {
-    "code": "ID-IP2",
-    "name": "🟦 🇲🇨 ID - IP LIMIT 2",
-    "host": "id.xstore1.dpdns.org",
-    "quota_gb": 100,
+    "code": "RunahWeb ID-IP2",
+    "name": "🟦 RumahWeb 🇲🇨 ID - IP LIMIT 2",
+    "host": "id.xstore1.cloud",
+    "quota_gb": 0,
     "ip_limit": 2,
-    "capacity": 20,
-    "prices": { "1": 333, "14": 4662, "30": 9990 },
+    "capacity": 50,
+    "prices": { "1": 333, "14": 4000, "30": 8000 },
     "enabled": true
   }
 ]
