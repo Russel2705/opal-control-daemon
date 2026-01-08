@@ -1,8 +1,8 @@
 [
   {
-    "code": "RumahWeb ID-IP1",
+    "code": "UDP ID-IP1",
     "name": "🟦🇲🇨UDP ZIVPN ID - 1IP",
-    "host": "id2.xstore1.dpdns.org",
+    "host": "id.xstore1.cloud",
     "quota_gb": 0,
     "ip_limit": 1,
     "capacity": 50,
@@ -10,13 +10,13 @@
     "enabled": true
   },
   {
-    "code": "RunahWeb ID-IP2",
+    "code": "UDP ID-IP2",
     "name": "🟦🇲🇨UDP ZIVPN ID - 2IP",
-    "host": "id2.xstore1.dpdns.org",
+    "host": "id.xstore1.cloud",
     "quota_gb": 0,
     "ip_limit": 2,
     "capacity": 50,
-    "prices": { "1": 333, "14": 4000, "30": 8000 },
+    "prices": { "1": 333, "14": 4500, "30": 8000 },
     "enabled": true
   }
 ]
