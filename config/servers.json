@@ -1,21 +1,21 @@
 [
   {
-    "code": "UDP ID-IP1",
-    "name": "🟦🇲🇨UDP ZIVPN ID - 1IP",
+    "code": "🇲🇨UDP ID - 1 IP",
+    "name": "🟦🇲🇨UDP ZIVPN ID - 1 IP",
     "host": "id.xstore1.cloud",
     "quota_gb": 0,
     "ip_limit": 1,
-    "capacity": 50,
+    "capacity": 20,
     "prices": { "1": 167, "14": 2500, "30": 5000 },
     "enabled": true
   },
   {
-    "code": "UDP ID-IP2",
-    "name": "🟦🇲🇨UDP ZIVPN ID - 2IP",
+    "code": "🇲🇨UDP ID - 2 IP",
+    "name": "🟦🇲🇨UDP ZIVPN ID - 2 IP",
     "host": "id.xstore1.cloud",
     "quota_gb": 0,
     "ip_limit": 2,
-    "capacity": 50,
+    "capacity": 20,
     "prices": { "1": 333, "14": 4500, "30": 8000 },
     "enabled": true
   }
