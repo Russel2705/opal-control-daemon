@@ -386,56 +386,72 @@ bot.start(async (ctx) => {
   const saldo = getBalance(uid);
 
   const today = countCreated({ userId: uid, from: startOfDay() });
-  const week = countCreated({ userId: uid, from: startOfWeek() });
+  const week  = countCreated({ userId: uid, from: startOfWeek() });
   const month = countCreated({ userId: uid, from: startOfMonth() });
 
   const gToday = countCreated({ from: startOfDay() });
-  const gWeek = countCreated({ from: startOfWeek() });
+  const gWeek  = countCreated({ from: startOfWeek() });
   const gMonth = countCreated({ from: startOfMonth() });
 
-  // UI fallback aman
+  // ===== UI SAFE =====
   const brandTitle = String(UI?.brandTitle || "ZiVPN UDP PREMIUM");
-  const brandDesc = Array.isArray(UI?.brandDesc) ? UI.brandDesc.filter(Boolean) : [];
+  const brandDesc  = Array.isArray(UI?.brandDesc) ? UI.brandDesc : [];
   const c = UI?.contact || {};
 
-  // helper padding supaya ":" rapi
-  const pad = (label, width = 8) => label + " ".repeat(Math.max(0, width - label.length));
+  const pad = (label, width = 8) =>
+    label + " ".repeat(Math.max(0, width - label.length));
 
-  // border bawah biar tidak kepanjangan (aman di HP)
-  const bottom = "╰" + "━".repeat(Math.min(26, brandTitle.length + 4)) + "╯";
+  const sep = "━━━━━━━━━━━━━━━━━━━━━━";
 
-  const lines = [
-  `╭━ ${brandTitle} ━╮`,
-  ...brandDesc.map((x) => `┃ ${x}`),
-  "╰━━━━━━━━━━━━━━━━━━━━━━━━━╯",
-  "", // 1 baris kosong setelah header
+  const lines = [];
 
-  `👋 Hai, ${ctx.from.first_name || "Member"}!`,
-  `🆔 ${pad("User ID")} : ${uid}`,
-  `💰 ${pad("Saldo")}   : ${formatRupiah(saldo)}`,
-  `🧩 ${pad("Mode")}    : ${MODE.toUpperCase()}`,
-  "", // kosong 1
-  "", // kosong 2 (biar jauh, seperti contoh bapak)
+  // ===== HEADER =====
+  lines.push(`⚡ ${brandTitle} ⚡`);
+  lines.push(sep);
 
-  "📊 Statistik Anda",
-  `• Hari ini    : ${today} akun`,
-  `• Minggu ini  : ${week} akun`,
-  `• Bulan ini   : ${month} akun`,
-  "", // kosong 1
-  "", // kosong 2
+  for (const d of brandDesc) {
+    if (typeof d === "string" && d.trim()) {
+      lines.push(d);
+    }
+  }
 
-  "🌍 Statistik Global",
-  `• Hari ini    : ${gToday} akun`,
-  `• Minggu ini  : ${gWeek} akun`,
-  `• Bulan ini   : ${gMonth} akun`,
-  "", // kosong 1
-  "", // kosong 2
+  lines.push("");
+  lines.push("");
 
-  "☎️ Bantuan / Kontak",
-  c.telegram ? `• Telegram  : ${c.telegram}` : null,
-  c.whatsapp ? `• WhatsApp  : ${c.whatsapp}` : null,
-  c.text ? `• Catatan   : ${c.text}` : null,
-].filter((x) => x !== null && x !== undefined);
+  // ===== USER INFO =====
+  lines.push("🧸 INFORMASI PENGGUNA");
+  lines.push(sep);
+  lines.push(`👋 Hai, ${ctx.from.first_name || "Member"}!`);
+  lines.push(`🆔 ${pad("User ID")} : ${uid}`);
+  lines.push(`💰 ${pad("Saldo")}  : ${formatRupiah(saldo)}`);
+  lines.push(`🧩 ${pad("Mode")}   : ${MODE.toUpperCase()}`);
+  lines.push("");
+  lines.push("");
+
+  // ===== USER STAT =====
+  lines.push("📊 STATISTIK ANDA");
+  lines.push(sep);
+  lines.push(`• Hari ini   : ${today} akun`);
+  lines.push(`• Minggu ini : ${week} akun`);
+  lines.push(`• Bulan ini  : ${month} akun`);
+  lines.push("");
+  lines.push("");
+
+  // ===== GLOBAL STAT =====
+  lines.push("🌍 STATISTIK GLOBAL");
+  lines.push(sep);
+  lines.push(`• Hari ini   : ${gToday} akun`);
+  lines.push(`• Minggu ini : ${gWeek} akun`);
+  lines.push(`• Bulan ini  : ${gMonth} akun`);
+  lines.push("");
+  lines.push("");
+
+  // ===== KONTAK =====
+  lines.push("☎️ BANTUAN / KONTAK");
+  lines.push(sep);
+  if (c.telegram) lines.push(`• Telegram : ${c.telegram}`);
+  if (c.whatsapp) lines.push(`• WhatsApp : ${c.whatsapp}`);
+  if (c.text)     lines.push(`• Catatan  : ${c.text}`);
 
   return ctx.reply(lines.join("\n"), mainKb(ctx));
 });
