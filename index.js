@@ -930,7 +930,7 @@ bot.on("text", async (ctx) => {
         caption:
           `✅ TopUp Dibuat\nOrder: ${orderId}\nNominal: ${formatRupiah(amount)}\nTotal Bayar: ${formatRupiah(totalPay)}\n` +
           (expAt ? `Expired: ${expAt}\n` : "") +
-          `\nSilakan scan QRIS.\n\nJika sudah bayar, saldo masuk otomatis.`,
+          `\nSilakan scan QRIS.\n\n⚠️ NO REFUND\nPembayaran yang sudah dilakukan tidak dapat\ndibatalkan.\nPastikan nominal sudah benar sebelum membayar.\n\nJika sudah bayar, saldo masuk otomatis.`,
       }
     );
   }
