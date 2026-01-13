@@ -105,14 +105,14 @@ function canUseBot(ctx) {
 
 function denyIfPrivate(ctx) {
   if (!canUseBot(ctx)) {
-    return ctx.reply("❌ Bot ini mode PRIVATE. Hubungi admin untuk akses.");
+    return ctx.reply("âŒ Bot ini mode PRIVATE. Hubungi admin untuk akses.");
   }
   return null;
 }
 
 // ===== UI config =====
 const UI = readJsonSafe(path.join(__dirname, "config", "ui.json"), {
-  brandTitle: "⚡ ZiVPN UDP PREMIUM ⚡",
+  brandTitle: "âš¡ ZiVPN UDP PREMIUM âš¡",
   brandDesc: [],
   contact: { telegram: "", whatsapp: "", text: "" },
 });
@@ -234,22 +234,22 @@ function countUsed(serverCode) {
 function serverCard(s) {
   const used = countUsed(s.code);
   const cap = Number(s.capacity || 0);
-  const status = cap > 0 && used >= cap ? "⚠️ Penuh" : "✅ Tersedia";
+  const status = cap > 0 && used >= cap ? "âš ï¸ Penuh" : "âœ… Tersedia";
 
   const p1 = Number(s.prices?.["1"] || 0);
   const p30 = Number(s.prices?.["30"] || 0);
 
   return [
-    "╔══════════════════════╗",
+    "â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—",
     `  ${s.name || s.code}`,
-    "╚══════════════════════╝",
-    `🛜 Domain: ${s.host}`,
-    `💳 Harga/1 hari: ${formatRupiah(p1)}`,
-    `📆 Harga/30 hari: ${formatRupiah(p30)}`,
-    `📡 Quota: ${Number(s.quota_gb || 0)} GB`,
-    `🔐 IP Limit: ${Number(s.ip_limit || 1)} IP`,
-    `👥 Akun Terpakai: ${used}/${cap || "-"}`,
-    `📌 Status: ${status}`,
+    "â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•",
+    `ðŸ›œ Domain: ${s.host}`,
+    `ðŸ’³ Harga/1 hari: ${formatRupiah(p1)}`,
+    `ðŸ“† Harga/30 hari: ${formatRupiah(p30)}`,
+    `ðŸ“¡ Quota: ${Number(s.quota_gb || 0)} GB`,
+    `ðŸ” IP Limit: ${Number(s.ip_limit || 1)} IP`,
+    `ðŸ‘¥ Akun Terpakai: ${used}/${cap || "-"}`,
+    `ðŸ“Œ Status: ${status}`,
   ].join("\n");
 }
 
@@ -329,20 +329,20 @@ process.on("uncaughtException", (e) => console.error("UNCAUGHT:", e));
 
 function mainKb(ctx) {
   const rows = [
-    ["➕ Buat Akun", "♻️ Perpanjang Akun"],
-    ["⏳ Trial Akun", MODE === "paid" ? "💰 TopUp Saldo" : "📌 Bantuan"],
-    ["📌 Akun Saya", "📞 Bantuan"],
+    ["âž• Buat Akun", "â™»ï¸ Perpanjang Akun"],
+    ["â³ Trial Akun", MODE === "paid" ? "ðŸ’° TopUp Saldo" : "ðŸ“Œ Bantuan"],
+    ["ðŸ“Œ Akun Saya", "ðŸ“ž Bantuan"],
   ];
-  if (isAdminId(ctx.from.id)) rows.push(["⚙️ Admin Panel"]);
+  if (isAdminId(ctx.from.id)) rows.push(["âš™ï¸ Admin Panel"]);
   return Markup.keyboard(rows).resize();
 }
 
 function adminKb() {
   return Markup.keyboard([
-    ["📋 List Akun Aktif", "🔎 Cari Akun"],
-    ["🗑️ Delete Akun", "💳 Tambah Saldo User"],
-    ["💰 Cek Saldo User"],
-    ["⬅️ Kembali"],
+    ["ðŸ“‹ List Akun Aktif", "ðŸ”Ž Cari Akun"],
+    ["ðŸ—‘ï¸ Delete Akun", "ðŸ’³ Tambah Saldo User"],
+    ["ðŸ’° Cek Saldo User"],
+    ["â¬…ï¸ Kembali"],
   ]).resize();
 }
 
@@ -352,7 +352,7 @@ function serversInline(mode /* 'buy' | 'trial' */) {
   const buttons = sv.map((s) => Markup.button.callback(s.code, `srv:${s.code}:${mode}`));
   const rows = [];
   for (let i = 0; i < buttons.length; i += 2) rows.push(buttons.slice(i, i + 2));
-  rows.push([Markup.button.callback("❌ Tutup", "close")]);
+  rows.push([Markup.button.callback("âŒ Tutup", "close")]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -364,7 +364,7 @@ function packageInline(serverCode) {
     const label = MODE === "paid" ? `${d} Hari (${formatRupiah(price)})` : `${d} Hari (GRATIS)`;
     return [Markup.button.callback(label, `pkg:${serverCode}:${d}`)];
   });
-  rows.push([Markup.button.callback("⬅️ Kembali", `back:${serverCode}`)]);
+  rows.push([Markup.button.callback("â¬…ï¸ Kembali", `back:${serverCode}`)]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -374,6 +374,19 @@ bot.action("close", async (ctx) => {
     await ctx.deleteMessage();
   } catch (_) {}
 });
+
+// ===============================
+// UI BOX (RAPI & TIDAK MEPET)
+// ===============================
+function box(title, width = 27) {
+  const line = "â”".repeat(width);
+  const space = " ".repeat(Math.max(0, width - title.length - 1));
+  return [
+    `â”${line}â”“`,
+    `â”ƒ ${title}${space}â”ƒ`,
+    `â”—${line}â”›`
+  ].join("\n");
+}
 
 // ===== /start =====
 bot.start(async (ctx) => {
@@ -393,64 +406,56 @@ bot.start(async (ctx) => {
   const gWeek = countCreated({ from: startOfWeek() });
   const gMonth = countCreated({ from: startOfMonth() });
 
-  // UI fallback aman
-  const brandTitle = String(UI?.brandTitle || "ZiVPN UDP PREMIUM");
-  const brandDesc = Array.isArray(UI?.brandDesc) ? UI.brandDesc.filter(Boolean) : [];
   const c = UI?.contact || {};
 
-  // helper padding supaya ":" rapi
-  const pad = (label, width = 8) => label + " ".repeat(Math.max(0, width - label.length));
-
-  // border bawah biar tidak kepanjangan (aman di HP)
-  const bottom = "╰" + "━".repeat(Math.min(26, brandTitle.length + 4)) + "╯";
-
   const lines = [
-  `╭━ ${brandTitle} ━╮`,
-  ...brandDesc.map((x) => `┃ ${x}`),
-  "╰━━━━━━━━━━━━━━━━━━━━━━━━━╯",
-  "", // 1 baris kosong setelah header
+    box("âš¡ ZiVPN UDP PREMIUM âš¡"),
+    "â”ƒ Bot VPN UDP dengan sistem otomatis",
+    "â”ƒ Akses internet cepat & aman",
 
-  `👋 Hai, ${ctx.from.first_name || "Member"}!`,
-  `🆔 ${pad("User ID")} : ${uid}`,
-  `💰 ${pad("Saldo")}   : ${formatRupiah(saldo)}`,
-  `🧩 ${pad("Mode")}    : ${MODE.toUpperCase()}`,
-  "", // kosong 1
-  "", // kosong 2 (biar jauh, seperti contoh bapak)
+    "", // jarak nyata
 
-  "📊 Statistik Anda",
-  `• Hari ini    : ${today} akun`,
-  `• Minggu ini  : ${week} akun`,
-  `• Bulan ini   : ${month} akun`,
-  "", // kosong 1
-  "", // kosong 2
+    box("ðŸ§¸Informasi User"),    
+    `ðŸ‘‹ Hai, ${ctx.from.first_name || "Member"}!`,
+    `ðŸ†” User ID  : ${uid}`,
+    `ðŸ’° Saldo    : ${formatRupiah(saldo)}`,
+    `ðŸ§© Mode     : ${MODE.toUpperCase()}`,
 
-  "🌍 Statistik Global",
-  `• Hari ini    : ${gToday} akun`,
-  `• Minggu ini  : ${gWeek} akun`,
-  `• Bulan ini   : ${gMonth} akun`,
-  "", // kosong 1
-  "", // kosong 2
+    "", // jarak antar section
 
-  "☎️ Bantuan / Kontak",
-  c.telegram ? `• Telegram  : ${c.telegram}` : null,
-  c.whatsapp ? `• WhatsApp  : ${c.whatsapp}` : null,
-  c.text ? `• Catatan   : ${c.text}` : null,
-].filter((x) => x !== null && x !== undefined);
+    box("ðŸ“Š Statistik Anda"),
+    `â€¢ Hari ini   : ${today} akun`,
+    `â€¢ Minggu ini : ${week} akun`,
+    `â€¢ Bulan ini  : ${month} akun`,
+
+     // jarak antar box
+
+    box("ðŸŒ Statistik Global"),
+    `â€¢ Hari ini   : ${gToday} akun`,
+    `â€¢ Minggu ini : ${gWeek} akun`,
+    `â€¢ Bulan ini  : ${gMonth} akun`,
+
+    "",
+
+    box("â˜Žï¸ Bantuan / Kontak"),
+    c.telegram ? `â€¢ Telegram : ${c.telegram}` : null,
+    c.text ? `â€¢ Catatan  : ${c.text}` : null,
+].filter(x => x !== null && x !== undefined);
 
   return ctx.reply(lines.join("\n"), mainKb(ctx));
 });
 
 // ===== Bantuan =====
-bot.hears("📞 Bantuan", async (ctx) => {
+bot.hears("ðŸ“ž Bantuan", async (ctx) => {
   const denied = denyIfPrivate(ctx);
   if (denied) return;
 
   const c = UI?.contact || {};
   const msg = [
-    "📞 Bantuan / Kontak",
-    c.telegram ? `• Telegram  : ${c.telegram}` : null,
-    c.whatsapp ? `• WhatsApp  : ${c.whatsapp}` : null,
-    c.text ? `• Catatan   : ${c.text}` : null,
+    "ðŸ“ž Bantuan / Kontak",
+    c.telegram ? `â€¢ Telegram  : ${c.telegram}` : null,
+    c.whatsapp ? `â€¢ WhatsApp  : ${c.whatsapp}` : null,
+    c.text ? `â€¢ Catatan   : ${c.text}` : null,
   ]
     .filter(Boolean)
     .join("\n");
@@ -459,31 +464,31 @@ bot.hears("📞 Bantuan", async (ctx) => {
 });
 
 // ===== Create account =====
-bot.hears("➕ Buat Akun", async (ctx) => {
+bot.hears("âž• Buat Akun", async (ctx) => {
   const denied = denyIfPrivate(ctx);
   if (denied) return;
 
   const sv = loadServers();
-  if (!sv.length) return ctx.reply("❌ Config server belum ada. Isi: config/servers.json", mainKb(ctx));
+  if (!sv.length) return ctx.reply("âŒ Config server belum ada. Isi: config/servers.json", mainKb(ctx));
 
   const text = sv.map(serverCard).join("\n\n");
   return ctx.reply(text, serversInline("buy"));
 });
 
 // ===== Trial (fixed 3 hours) =====
-bot.hears("⏳ Trial Akun", async (ctx) => {
+bot.hears("â³ Trial Akun", async (ctx) => {
   const denied = denyIfPrivate(ctx);
   if (denied) return;
 
   const sv = loadServers();
-  if (!sv.length) return ctx.reply("❌ Config server belum ada. Isi: config/servers.json", mainKb(ctx));
+  if (!sv.length) return ctx.reply("âŒ Config server belum ada. Isi: config/servers.json", mainKb(ctx));
 
   const u = upsertUser(ctx.from.id, ctx.from.first_name);
   if (u.trialUsed) {
-    return ctx.reply("❌ Trial hanya 1x untuk tiap user.", mainKb(ctx));
+    return ctx.reply("âŒ Trial hanya 1x untuk tiap user.", mainKb(ctx));
   }
 
-  const text = `⏳ TRIAL ${TRIAL_HOURS} JAM\n\n` + sv.map(serverCard).join("\n\n");
+  const text = `â³ TRIAL ${TRIAL_HOURS} JAM\n\n` + sv.map(serverCard).join("\n\n");
   return ctx.reply(text, serversInline("trial"));
 });
 
@@ -506,19 +511,19 @@ bot.action(/^srv:([^:]+):(buy|trial)$/i, async (ctx) => {
 
   // slot check
   const used = countUsed(serverCode);
-  if (s.capacity && used >= s.capacity) return ctx.reply("⚠️ Server penuh. Pilih server lain.", mainKb(ctx));
+  if (s.capacity && used >= s.capacity) return ctx.reply("âš ï¸ Server penuh. Pilih server lain.", mainKb(ctx));
 
   if (mode === "trial") {
     // set flow: trial fixed hours
     ctx.session.flow = { type: "trial", serverCode, trialHours: TRIAL_HOURS };
     return ctx.reply(
-      `⏳ TRIAL ${TRIAL_HOURS} JAM\nHost: ${s.host}\n\n🔑 Masukkan password akun (unik)\nAturan:\n• 3-32 karakter\n• Tanpa spasi/koma\n• Harus unik`,
+      `â³ TRIAL ${TRIAL_HOURS} JAM\nHost: ${s.host}\n\nðŸ”‘ Masukkan password akun (unik)\nAturan:\nâ€¢ 3-32 karakter\nâ€¢ Tanpa spasi/koma\nâ€¢ Harus unik`,
       mainKb(ctx)
     );
   }
 
   // normal buy: show packages
-  const msg = serverCard(s) + "\n\n🛒 Pilih Paket:";
+  const msg = serverCard(s) + "\n\nðŸ›’ Pilih Paket:";
   return ctx.editMessageText(msg, packageInline(serverCode));
 });
 
@@ -533,7 +538,7 @@ bot.action(/^pkg:([^:]+):(\d+)$/i, async (ctx) => {
 
   // slot check
   const used = countUsed(serverCode);
-  if (s.capacity && used >= s.capacity) return ctx.reply("⚠️ Server penuh. Pilih server lain.", mainKb(ctx));
+  if (s.capacity && used >= s.capacity) return ctx.reply("âš ï¸ Server penuh. Pilih server lain.", mainKb(ctx));
 
   let price = 0;
   if (MODE === "paid") {
@@ -542,24 +547,24 @@ bot.action(/^pkg:([^:]+):(\d+)$/i, async (ctx) => {
 
     const bal = getBalance(ctx.from.id);
     if (bal < price) {
-      return ctx.reply(`❌ Saldo kurang.\nHarga: ${formatRupiah(price)}\nSaldo: ${formatRupiah(bal)}`, mainKb(ctx));
+      return ctx.reply(`âŒ Saldo kurang.\nHarga: ${formatRupiah(price)}\nSaldo: ${formatRupiah(bal)}`, mainKb(ctx));
     }
   }
 
   ctx.session.flow = { type: "create", serverCode, days, price };
   return ctx.reply(
-    `🔑 Masukkan password akun (unik)\nAturan:\n• 3-32 karakter\n• Tanpa spasi/koma\n• Harus unik\n\nPaket: ${days} hari`,
+    `ðŸ”‘ Masukkan password akun (unik)\nAturan:\nâ€¢ 3-32 karakter\nâ€¢ Tanpa spasi/koma\nâ€¢ Harus unik\n\nPaket: ${days} hari`,
     mainKb(ctx)
   );
 });
 
 // ===== Renew =====
-bot.hears("♻️ Perpanjang Akun", async (ctx) => {
+bot.hears("â™»ï¸ Perpanjang Akun", async (ctx) => {
   const denied = denyIfPrivate(ctx);
   if (denied) return;
 
   ctx.session.renew = true;
-  return ctx.reply("🔑 Kirim password akun yang ingin diperpanjang:", mainKb(ctx));
+  return ctx.reply("ðŸ”‘ Kirim password akun yang ingin diperpanjang:", mainKb(ctx));
 });
 
 bot.action(/^renew:([^:]+):(\d+)$/i, async (ctx) => {
@@ -569,7 +574,7 @@ bot.action(/^renew:([^:]+):(\d+)$/i, async (ctx) => {
 
   const all = getAcc();
   const a = all.find((x) => x.password === pass && x.status === "active" && !isExpired(x));
-  if (!a) return ctx.reply("❌ Akun tidak ditemukan / sudah expired.", mainKb(ctx));
+  if (!a) return ctx.reply("âŒ Akun tidak ditemukan / sudah expired.", mainKb(ctx));
 
   const s = getServer(a.serverCode);
   if (!s) return ctx.reply("Server config tidak ditemukan.", mainKb(ctx));
@@ -577,7 +582,7 @@ bot.action(/^renew:([^:]+):(\d+)$/i, async (ctx) => {
   const price = MODE === "paid" ? Number(s.prices?.[String(days)] || 0) : 0;
   if (MODE === "paid") {
     const ok = subBalance(ctx.from.id, price);
-    if (!ok) return ctx.reply("❌ Saldo kurang untuk perpanjang.", mainKb(ctx));
+    if (!ok) return ctx.reply("âŒ Saldo kurang untuk perpanjang.", mainKb(ctx));
   }
 
   const cur = new Date(a.expiredAt);
@@ -586,13 +591,13 @@ bot.action(/^renew:([^:]+):(\d+)$/i, async (ctx) => {
   setAcc(all);
 
   return ctx.reply(
-    `✅ Perpanjang Berhasil\n\nDomain : ${a.host}\nPassword : ${a.password}\nExpired : ${new Date(a.expiredAt).toLocaleString("id-ID")}`,
+    `âœ… Perpanjang Berhasil\n\nDomain : ${a.host}\nPassword : ${a.password}\nExpired : ${new Date(a.expiredAt).toLocaleString("id-ID")}`,
     mainKb(ctx)
   );
 });
 
 // ===== My account =====
-bot.hears("📌 Akun Saya", async (ctx) => {
+bot.hears("ðŸ“Œ Akun Saya", async (ctx) => {
   const denied = denyIfPrivate(ctx);
   if (denied) return;
 
@@ -625,17 +630,17 @@ bot.hears(/top\s*up|topup/i, async (ctx) => {
 });
 
 // ===== Admin Panel =====
-bot.hears("⚙️ Admin Panel", async (ctx) => {
-  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
-  return ctx.reply("⚙️ Admin Panel", adminKb());
+bot.hears("âš™ï¸ Admin Panel", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("âŒ Akses ditolak.");
+  return ctx.reply("âš™ï¸ Admin Panel", adminKb());
 });
 
-bot.hears("⬅️ Kembali", async (ctx) => {
+bot.hears("â¬…ï¸ Kembali", async (ctx) => {
   return ctx.reply("Kembali ke menu utama.", mainKb(ctx));
 });
 
-bot.hears("📋 List Akun Aktif", async (ctx) => {
-  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+bot.hears("ðŸ“‹ List Akun Aktif", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("âŒ Akses ditolak.");
   const acc = activeAccounts().slice(-50).reverse();
   if (!acc.length) return ctx.reply("Belum ada akun aktif.", adminKb());
 
@@ -650,14 +655,14 @@ bot.hears("📋 List Akun Aktif", async (ctx) => {
   return ctx.reply(msg, adminKb());
 });
 
-bot.hears("🔎 Cari Akun", async (ctx) => {
-  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+bot.hears("ðŸ”Ž Cari Akun", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("âŒ Akses ditolak.");
   ctx.session.findPass = true;
   return ctx.reply("Kirim password akun untuk dicek:", adminKb());
 });
 
-bot.hears("🗑️ Delete Akun", async (ctx) => {
-  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+bot.hears("ðŸ—‘ï¸ Delete Akun", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("âŒ Akses ditolak.");
   ctx.session.delPass = true;
   return ctx.reply(
     "Format hapus: <user_id> <password>\nContoh: 5688411076 eko12345",
@@ -665,14 +670,14 @@ bot.hears("🗑️ Delete Akun", async (ctx) => {
   );
 });
 
-bot.hears("💳 Tambah Saldo User", async (ctx) => {
-  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+bot.hears("ðŸ’³ Tambah Saldo User", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("âŒ Akses ditolak.");
   ctx.session.addSaldo = true;
   return ctx.reply("Format: <user_id> <nominal>\nContoh: 5688411076 20000", adminKb());
 });
 
-bot.hears("💰 Cek Saldo User", async (ctx) => {
-  if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
+bot.hears("ðŸ’° Cek Saldo User", async (ctx) => {
+  if (!isAdminId(ctx.from.id)) return ctx.reply("âŒ Akses ditolak.");
   ctx.session.checkSaldo = true;
   return ctx.reply("Kirim user_id untuk cek saldo.\nContoh: 5688411076", adminKb());
 });
@@ -691,7 +696,7 @@ bot.on("text", async (ctx) => {
     const a = getAcc().find((x) => x.password === text);
     if (!a) return ctx.reply("Tidak ditemukan.", adminKb());
     return ctx.reply(
-      `✅ Ditemukan\nDomain: ${a.host}\nPass: ${a.password}\nExp: ${new Date(a.expiredAt).toLocaleString("id-ID")}\nStatus: ${a.status}\nUserID: ${a.userId}`,
+      `âœ… Ditemukan\nDomain: ${a.host}\nPass: ${a.password}\nExp: ${new Date(a.expiredAt).toLocaleString("id-ID")}\nStatus: ${a.status}\nUserID: ${a.userId}`,
       adminKb()
     );
   }
@@ -726,7 +731,7 @@ bot.on("text", async (ctx) => {
     setAcc(all);
 
     await passDel(pass);
-    return ctx.reply(`✅ Akun user ${uid} dengan password ${pass} sudah dihapus.`, adminKb());
+    return ctx.reply(`âœ… Akun user ${uid} dengan password ${pass} sudah dihapus.`, adminKb());
   }
 
   // Admin: add saldo
@@ -738,7 +743,7 @@ bot.on("text", async (ctx) => {
     const amt = Number(parts[1]);
     if (!amt || amt <= 0) return ctx.reply("Nominal tidak valid.", adminKb());
     addBalance(uid, amt);
-    return ctx.reply(`✅ Saldo user ${uid} ditambah ${formatRupiah(amt)}`, adminKb());
+    return ctx.reply(`âœ… Saldo user ${uid} ditambah ${formatRupiah(amt)}`, adminKb());
   }
 
     // Admin: check saldo user
@@ -749,7 +754,7 @@ bot.on("text", async (ctx) => {
     if (!/^\d+$/.test(uid)) return ctx.reply("user_id harus angka.", adminKb());
 
     const bal = getBalance(uid);
-    return ctx.reply(`💰 Saldo user ${uid}: ${formatRupiah(bal)}`, adminKb());
+    return ctx.reply(`ðŸ’° Saldo user ${uid}: ${formatRupiah(bal)}`, adminKb());
   }
 
   // Renew flow: user sends password
@@ -759,7 +764,7 @@ bot.on("text", async (ctx) => {
 
     const all = getAcc();
     const a = all.find((x) => x.password === pass && x.status === "active" && !isExpired(x));
-    if (!a) return ctx.reply("❌ Akun tidak ditemukan / sudah expired.", mainKb(ctx));
+    if (!a) return ctx.reply("âŒ Akun tidak ditemukan / sudah expired.", mainKb(ctx));
 
     const s = getServer(a.serverCode);
     if (!s) return ctx.reply("Server config tidak ditemukan.", mainKb(ctx));
@@ -781,14 +786,14 @@ bot.on("text", async (ctx) => {
     const pass = text;
 
     if (!validPassword(pass)) {
-      return ctx.reply("❌ Password tidak valid. (3-32 char, tanpa spasi/koma)", mainKb(ctx));
+      return ctx.reply("âŒ Password tidak valid. (3-32 char, tanpa spasi/koma)", mainKb(ctx));
     }
 
     // unique checks
     const existsDb = activeAccounts().some((a) => a.password === pass);
     const existsSys = await passCheck(pass);
     if (existsDb || existsSys) {
-      return ctx.reply("❌ Password sudah dipakai. Gunakan yang lain.", mainKb(ctx));
+      return ctx.reply("âŒ Password sudah dipakai. Gunakan yang lain.", mainKb(ctx));
     }
 
     const s = getServer(serverCode);
@@ -796,12 +801,12 @@ bot.on("text", async (ctx) => {
 
     // slot check again
     const used = countUsed(serverCode);
-    if (s.capacity && used >= s.capacity) return ctx.reply("⚠️ Server penuh. Pilih server lain.", mainKb(ctx));
+    if (s.capacity && used >= s.capacity) return ctx.reply("âš ï¸ Server penuh. Pilih server lain.", mainKb(ctx));
 
     // paid: cut balance (only for create, not trial)
     if (MODE === "paid" && type === "create") {
       const ok = subBalance(ctx.from.id, Number(price || 0));
-      if (!ok) return ctx.reply("❌ Saldo kurang.", mainKb(ctx));
+      if (!ok) return ctx.reply("âŒ Saldo kurang.", mainKb(ctx));
     }
 
     // add password to zivpn
@@ -810,13 +815,13 @@ bot.on("text", async (ctx) => {
     } catch (e) {
       // refund if paid create
       if (MODE === "paid" && type === "create") addBalance(ctx.from.id, Number(price || 0));
-      return ctx.reply(`❌ Gagal membuat akun: ${e.message}`, mainKb(ctx));
+      return ctx.reply(`âŒ Gagal membuat akun: ${e.message}`, mainKb(ctx));
     }
 
     // set expiry
     const exp =
       type === "trial"
-        ? addHoursISO(trialHours || TRIAL_HOURS) // ✅ trial fixed hours
+        ? addHoursISO(trialHours || TRIAL_HOURS) // âœ… trial fixed hours
         : addDaysISO(days);
 
     // store account
@@ -845,7 +850,7 @@ bot.on("text", async (ctx) => {
     }
 
     return ctx.reply(
-      `✅ Akun Berhasil Dibuat\n\nDomain : ${s.host}\nPassword : ${pass}\nExpired : ${new Date(exp).toLocaleString("id-ID")}`,
+      `âœ… Akun Berhasil Dibuat\n\nDomain : ${s.host}\nPassword : ${pass}\nExpired : ${new Date(exp).toLocaleString("id-ID")}`,
       mainKb(ctx)
     );
   }
@@ -855,10 +860,10 @@ bot.on("text", async (ctx) => {
     ctx.session.topup = false;
 
     const amount = Number(text.replace(/[^\d]/g, ""));
-    if (!amount || amount < TOPUP_MIN) return ctx.reply(`❌ Minimal topup ${formatRupiah(TOPUP_MIN)}`, mainKb(ctx));
+    if (!amount || amount < TOPUP_MIN) return ctx.reply(`âŒ Minimal topup ${formatRupiah(TOPUP_MIN)}`, mainKb(ctx));
 
     if (!PAKASIR_PROJECT || !PAKASIR_API_KEY) {
-      return ctx.reply("❌ Pakasir belum diset. Isi PAKASIR_PROJECT & PAKASIR_API_KEY di env.", mainKb(ctx));
+      return ctx.reply("âŒ Pakasir belum diset. Isi PAKASIR_PROJECT & PAKASIR_API_KEY di env.", mainKb(ctx));
     }
 
     const orderId = `TOPUP-${ctx.from.id}-${Date.now()}`;
@@ -876,17 +881,17 @@ bot.on("text", async (ctx) => {
         }),
       });
     } catch (e) {
-      return ctx.reply("❌ Gagal konek ke Pakasir (network). Coba lagi.", mainKb(ctx));
+      return ctx.reply("âŒ Gagal konek ke Pakasir (network). Coba lagi.", mainKb(ctx));
     }
 
     if (!res.ok) {
       const t = await res.text().catch(() => "");
-      return ctx.reply(`❌ Pakasir error: HTTP ${res.status}\n${t.slice(0, 300)}`, mainKb(ctx));
+      return ctx.reply(`âŒ Pakasir error: HTTP ${res.status}\n${t.slice(0, 300)}`, mainKb(ctx));
     }
 
     const data = await res.json().catch(() => null);
     const pay = data?.payment;
-    if (!pay?.payment_number) return ctx.reply("❌ Respon Pakasir tidak valid.", mainKb(ctx));
+    if (!pay?.payment_number) return ctx.reply("âŒ Respon Pakasir tidak valid.", mainKb(ctx));
 
     const qrString = pay.payment_number;
     const expAt = pay.expired_at || null;
@@ -908,15 +913,23 @@ bot.on("text", async (ctx) => {
     });
     setInv(inv);
 
-    return ctx.replyWithPhoto(
-      { source: png },
-      {
-        caption:
-          `✅ TopUp Dibuat\nOrder: ${orderId}\nNominal: ${formatRupiah(amount)}\nTotal Bayar: ${formatRupiah(totalPay)}\n` +
-          (expAt ? `Expired: ${expAt}\n` : "") +
-          `\nSilakan scan QRIS.\n\nJika sudah bayar, saldo masuk otomatis.`,
-      }
-    );
+return ctx.replyWithPhoto(
+  { source: png },
+  {
+    caption:
+      "âœ… TopUp Dibuat\n" +
+      `Order: ${orderId}\n` +
+      `Nominal: ${formatRupiah(amount)}\n` +
+      `Total Bayar: ${formatRupiah(totalPay)}\n` +
+      (expAt ? `Expired: ${expAt}\n` : "") +
+      "\n" +
+      "Silakan scan QRIS.\n\n" +
+      "âš ï¸ NO REFUND\n" +
+      "Pembayaran yang sudah dilakukan tidak dapat dibatalkan.\n" +
+      "Pastikan nominal sudah benar sebelum membayar.\n\n" +
+      "Jika sudah bayar, saldo masuk otomatis."
+  }
+);
   }
 
   // default: ignore
