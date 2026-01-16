@@ -243,7 +243,6 @@ function serverCard(s) {
     "╔══════════════════════╗",
     `  ${s.name || s.code}`,
     "╚══════════════════════╝",
-    `🛜 Domain: ${s.host}`,
     `💳 Harga/1 hari: ${formatRupiah(p1)}`,
     `📆 Harga/30 hari: ${formatRupiah(p30)}`,
     `📡 Quota: ${Number(s.quota_gb || 0)} GB`,
@@ -860,10 +859,21 @@ bot.on("text", async (ctx) => {
       }
     }
 
-    return ctx.reply(
-      `✅ Akun Berhasil Dibuat\n\nDomain : ${s.host}\nPassword : ${pass}\nExpired : ${new Date(exp).toLocaleString("id-ID")}`,
-      mainKb(ctx)
-    );
+  return ctx.reply(
+  `✅ *AKUN BERHASIL DIBUAT*\n` +
+  `━━━━━━━━━━━━━━━━━━━━━━\n` +
+  `🌐 Domain   : ${s.host}\n` +
+  `🔐 Password : ${pass}\n` +
+  `⏳ Expired  : ${new Date(exp).toLocaleString("id-ID")}\n` +
+  `━━━━━━━━━━━━━━━━━━━━━━\n` +
+  `🙏 Terima kasih telah mempercayakan layanan kami.\n` +
+  `Jika ada kendala, silakan hubungi admin.`,
+  {
+    parse_mode: "Markdown",
+    ...mainKb(ctx)
+  }
+);
+    
   }
 
   // Topup flow (paid)
