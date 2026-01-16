@@ -378,45 +378,33 @@ bot.action("close", async (ctx) => {
 bot.start(async (ctx) => {
   const denied = denyIfPrivate(ctx);
   if (denied) return;
-
   upsertUser(ctx.from.id, ctx.from.first_name);
-
   const uid = ctx.from.id;
   const saldo = getBalance(uid);
-
   const today = countCreated({ userId: uid, from: startOfDay() });
   const week  = countCreated({ userId: uid, from: startOfWeek() });
   const month = countCreated({ userId: uid, from: startOfMonth() });
-
   const gToday = countCreated({ from: startOfDay() });
   const gWeek  = countCreated({ from: startOfWeek() });
   const gMonth = countCreated({ from: startOfMonth() });
-
   // ===== UI SAFE =====
   const brandTitle = String(UI?.brandTitle || "ZiVPN UDP PREMIUM");
   const brandDesc  = Array.isArray(UI?.brandDesc) ? UI.brandDesc : [];
   const c = UI?.contact || {};
-
   const pad = (label, width = 8) =>
     label + " ".repeat(Math.max(0, width - label.length));
-
   const sep = "━━━━━━━━━━━━━━━━━━━━━━";
-
   const lines = [];
-
   // ===== HEADER =====
-  lines.push(`⚡ ${brandTitle} ⚡`);
+  lines.push(`⚡  ${brandTitle} ⚡ `);
   lines.push(sep);
-
   for (const d of brandDesc) {
     if (typeof d === "string" && d.trim()) {
       lines.push(d);
     }
   }
-
   lines.push("");
   lines.push("");
-
   // ===== USER INFO =====
   lines.push("🧸 INFORMASI PENGGUNA");
   lines.push(sep);
@@ -426,7 +414,6 @@ bot.start(async (ctx) => {
   lines.push(`🧩 ${pad("Mode")}   : ${MODE.toUpperCase()}`);
   lines.push("");
   lines.push("");
-
   // ===== USER STAT =====
   lines.push("📊 STATISTIK ANDA");
   lines.push(sep);
@@ -435,7 +422,6 @@ bot.start(async (ctx) => {
   lines.push(`• Bulan ini  : ${month} akun`);
   lines.push("");
   lines.push("");
-
   // ===== GLOBAL STAT =====
   lines.push("🌍 STATISTIK GLOBAL");
   lines.push(sep);
@@ -444,15 +430,13 @@ bot.start(async (ctx) => {
   lines.push(`• Bulan ini  : ${gMonth} akun`);
   lines.push("");
   lines.push("");
-
-  // ===== KONTAK =====
-  lines.push("☎️ BANTUAN / KONTAK");
+  lines.push("⚙️ COMMAND");
   lines.push(sep);
-  if (c.telegram) lines.push(`• Telegram : ${c.telegram}`);
-  if (c.whatsapp) lines.push(`• WhatsApp : ${c.whatsapp}`);
-  if (c.text)     lines.push(`• Catatan  : ${c.text}`);
-
-  return ctx.reply(lines.join("\n"), mainKb(ctx));
+  lines.push('• 🏠 Menu Utama   : /start');
+  lines.push('• 🔑 Menu Admin   : /admin');
+  lines.push("");
+  lines.push('👨💻 Designed & Developed by @xpider0');
+return ctx.reply(lines.join("\n"), mainKb(ctx));
 });
 
 // ===== Bantuan =====
