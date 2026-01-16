@@ -332,7 +332,7 @@ function mainKb(ctx) {
     ["⏳ Trial Akun", MODE === "paid" ? "💰 TopUp Saldo" : "📌 Bantuan"],
     ["📌 Akun Saya", "📞 Bantuan"],
   ];
-  if (isAdminId(ctx.from.id)) rows.push(["⚙️ Admin Panel"]);
+  if (isAdminId(ctx.from.id)) rows.push(["/admin"]);
   return Markup.keyboard(rows).resize();
 }
 
@@ -624,9 +624,9 @@ bot.hears(/top\s*up|topup/i, async (ctx) => {
 });
 
 // ===== Admin Panel =====
-bot.hears("⚙️ Admin Panel", async (ctx) => {
+bot.hears("/admin", async (ctx) => {
   if (!isAdminId(ctx.from.id)) return ctx.reply("❌ Akses ditolak.");
-  return ctx.reply("⚙️ Admin Panel", adminKb());
+  return ctx.reply("/admin", adminKb());
 });
 
 bot.hears("⬅️ Kembali", async (ctx) => {
