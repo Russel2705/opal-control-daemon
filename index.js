@@ -16,7 +16,7 @@ const { execFile } = require("child_process");
 const express = require("express");
 const QRCode = require("qrcode");
 const { Telegraf, Markup, session } = require("telegraf");
-
+const line = "---------------------------------------";
 // ===== ENV =====
 const MODE = (process.env.MODE || "free").toLowerCase(); // free|paid
 const BOT_TOKEN = process.env.BOT_TOKEN;
@@ -844,21 +844,26 @@ bot.on("text", async (ctx) => {
     }
 
   return ctx.reply(
-  `✅ *AKUN BERHASIL DIBUAT*\n` +
-  `━━━━━━━━━━━━━━━━━━━━━━\n` +
-  `🌐 Domain   : ${s.host}\n` +
-  `🔐 Password : ${pass}\n` +
-  `⏳ Expired  : ${new Date(exp).toLocaleString("id-ID")}\n` +
-  `━━━━━━━━━━━━━━━━━━━━━━\n` +
-  `🙏 Terima kasih telah mempercayakan layanan kami.\n` +
-  `Jika ada kendala, silakan hubungi admin.`,
+  `<b>⚡O X STORE ZIVPN UDP PREMIUM ⚡r</b>
+✅o <b>AKUN BERHASIL DIBUAT</b>
+${line}
+🌐 <b>Domain</b>   : <code>${s.host}</code>
+🔐 <b>Password</b> : <code>${pass}</code>
+⏳  <b>Expired</b>  : ${new Date(exp).toLocaleString("id-ID")}
+${line}
+📘 <b>TUTORIAL PASANG ZIVPN</b>
+
+1️⃣ <a href="https://drive.google.com/file/d/1xWxDMZr7qZr_WRLZxSdE_1vES_AJMwbT/view?usp=sharing">Ton
+2️⃣ Ikuti langkah di video
+3️⃣ Selesai & Connect 🚀
+🙏 Terima kasih telah mempercayakan layanan kami.`,
   {
-    parse_mode: "Markdown",
+    parse_mode: "HTML",
     ...mainKb(ctx)
   }
 );
     
-  }
+}
 
   // Topup flow (paid)
   if (ctx.session.topup && MODE === "paid") {
