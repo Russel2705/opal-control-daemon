@@ -1,4 +1,4 @@
-# Opal Control Daemon (ZiVPN Bot)
+# Opal Control Daemon
 
 ## 1x Install
 ```bash
