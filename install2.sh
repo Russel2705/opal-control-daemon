@@ -182,15 +182,6 @@ EOF
   fi
 }
 
-configure_kernel() {
-  log "Tuning kernel (rmem/wmem)"
-  cat > /etc/sysctl.d/zivpn.conf <<EOF
-net.core.rmem_max=16777216
-net.core.wmem_max=16777216
-EOF
-  sysctl -p /etc/sysctl.d/zivpn.conf >/dev/null || true
-}
-
 # ===================== UDPGW (build source + config + service) =====================
 
 build_udpgw() {
