@@ -427,7 +427,6 @@ main() {
   ensure_zivpn_config_and_cert
   configure_zivpn_passwords_optional
   install_zivpn_service
-  configure_kernel
 
   # UDPGW
   ensure_env_file
